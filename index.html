@@ -688,11 +688,17 @@ function renderDashboard() {
     <div class="space-y-5">
       <div>
         <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">📦 PATRIMÔNIO</h2>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="stat-tile col-span-2 bg-amber-700 text-white">
-            <p class="text-xs opacity-80">Patrimônio total</p>
-            <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div class="stat-tile bg-teal-700 text-white">
+            <p class="text-xs opacity-80">Patrimônio estimado</p>
+            <p class="text-xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
           </div>
+          <div class="stat-tile bg-zinc-800 text-white">
+            <p class="text-xs opacity-80">Patrimônio de mercado</p>
+            <p class="text-xl font-bold">${fmtMoeda(patrimonioTotalMercado())}</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
           <div class="stat-tile"><p class="text-xs text-zinc-500">Animais</p><p class="font-bold">${fmtMoeda(valorTotalAnimais())}</p></div>
           <div class="stat-tile"><p class="text-xs text-zinc-500">Veículos</p><p class="font-bold">${fmtMoeda(valorTotalVeiculos())}</p></div>
           <div class="stat-tile"><p class="text-xs text-zinc-500">Equipamentos</p><p class="font-bold">${fmtMoeda(valorTotalEquipamentos())}</p></div>
@@ -713,9 +719,12 @@ function renderDashboard() {
         </div>
       </div>
 
-      ${registrosSaudeEmTratamento().length ? `
       <div>
-        <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">🏥 SAÚDE</h2>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm text-zinc-500 flex items-center gap-1">🏥 SAÚDE</h2>
+          <button onclick="abrirFormSaude()" class="btn-secondary text-xs">+ Registrar</button>
+        </div>
+        ${registrosSaudeEmTratamento().length ? `
         <div class="stat-tile cursor-pointer" onclick="irParaAnimaisEmTratamento()">
           <div class="flex justify-between items-center">
             <div>
@@ -724,8 +733,8 @@ function renderDashboard() {
             </div>
             <p class="text-xs text-zinc-500 text-right">Despesas de saúde (mês)<br><span class="font-bold text-red-600">${fmtMoeda(totalDespesasSaudeMes(ym))}</span></p>
           </div>
-        </div>
-      </div>` : ''}
+        </div>` : `<p class="text-zinc-400 text-xs text-center py-2">Nenhum animal em tratamento no momento.</p>`}
+      </div>
 
       <div>
         <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">💰 FINANCEIRO</h2>
@@ -770,7 +779,8 @@ function renderAnimaisList() {
   document.getElementById('section-animais').innerHTML = `
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-bold text-lg">🐂 Animais <span class="text-zinc-400 text-sm font-normal">(${state.animais.length})</span></h2>
-      <div class="flex gap-2">
+      <div class="flex gap-2 flex-wrap justify-end">
+        <button onclick="abrirFormSaude()" class="btn-secondary text-xs">🏥 Saúde</button>
         <button onclick="abrirFormFrete()" class="btn-secondary text-xs">🚚 Frete</button>
         <button onclick="abrirFormAnimal()" class="btn-primary text-xs">+ Novo animal</button>
       </div>
@@ -836,7 +846,8 @@ function renderAnimalFicha(id) {
   const timeline = [
     { data: a.dataCompra, tipo: 'Compra', desc: 'Animal comprado', valor: a.valorCompra },
     ...despesas.map(d => ({ data: d.data, tipo: d.categoria, desc: d.descricao || d.categoria, valor: d.valorTotal })),
-    ...(a.atualizacoesMercado||[]).map(u => ({ data: u.data, tipo: 'Mercado', desc: 'Valor de mercado atualizado', valor: u.valor, isUpdate: true }))
+    ...(a.atualizacoesMercado||[]).map(u => ({ data: u.data, tipo: 'Mercado', desc: 'Valor de mercado atualizado', valor: u.valor, isUpdate: true })),
+    ...(a.status === 'Vendido' && a.dataVenda ? [{ data: a.dataVenda, tipo: 'Venda', desc: 'Animal vendido' + (a.comprador ? ' para ' + a.comprador : ''), valor: a.valorVenda }] : [])
   ].filter(t => t.data).sort((x,y) => (y.data||'').localeCompare(x.data||''));
 
   document.getElementById('section-animal-ficha').innerHTML = `
@@ -852,13 +863,27 @@ function renderAnimalFicha(id) {
               <h2 class="font-bold text-lg">${escapeHtml(a.nome||'Sem nome')}</h2>
               <p class="text-xs text-zinc-400">Brinco ${escapeHtml(a.numeroBrinco||'—')} · ${escapeHtml(a.raca||'—')} · ${escapeHtml(a.sexo||'—')}</p>
             </div>
-            <button onclick="abrirFormAnimal(${JSON.stringify(a).replace(/"/g,'&quot;')})" class="text-xs font-semibold text-amber-700">Editar</button>
+            <div class="flex gap-2 shrink-0">
+              <button onclick="abrirFormAnimal(${JSON.stringify(a).replace(/"/g,'&quot;')})" class="text-xs font-semibold text-amber-700">Editar</button>
+              ${a.status !== 'Vendido' ? `<button onclick="abrirFormVenda('${a.id}')" class="text-xs font-semibold text-green-700">💰 Vender</button>` : ''}
+            </div>
           </div>
           <p class="text-xs text-zinc-400 mt-1">Peso atual: ${a.pesoAtual||'—'} kg (${fmtData(a.dataUltimaPesagem)}) · Compra: ${fmtData(a.dataCompra)}</p>
         </div>
       </div>
       ${a.observacoes ? `<p class="text-xs text-zinc-500 mt-2 border-t pt-2">${escapeHtml(a.observacoes)}</p>` : ''}
     </div>
+
+    ${a.status === 'Vendido' ? `
+    <div class="card p-4 mb-4 border-2 border-green-200 bg-green-50">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold text-sm text-green-700">💰 VENDIDO</h3>
+        <button onclick="abrirFormVenda('${a.id}')" class="text-xs font-semibold text-green-700">Editar venda</button>
+      </div>
+      <p class="text-xs text-zinc-500">Data: ${fmtData(a.dataVenda)} ${a.comprador ? '· Comprador: '+escapeHtml(a.comprador) : ''}</p>
+      <p class="font-bold text-lg text-green-700">${fmtMoeda(a.valorVenda)}</p>
+      ${a.observacaoVenda ? `<p class="text-xs text-zinc-500 mt-1">${escapeHtml(a.observacaoVenda)}</p>` : ''}
+    </div>` : ''}
 
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div class="stat-tile"><p class="text-xs text-zinc-500">Valor de compra</p><p class="font-bold">${fmtMoeda(a.valorCompra)}</p></div>
@@ -1017,6 +1042,49 @@ function abrirFormMercado(animalId) {
   });
 }
 
+function abrirFormVenda(animalId) {
+  const a = state.animais.find(x => x.id === animalId);
+  const jaVendido = a.status === 'Vendido';
+  openModal(jaVendido ? 'Editar venda' : '💰 Vender animal', `
+    <form id="formVenda" class="space-y-3">
+      <p class="text-sm text-zinc-500">Vendendo <b>${escapeHtml(a.nome||'')}</b>. Isso marca o animal como Vendido e lança automaticamente a receita no Financeiro.</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Data da venda</label><input type="date" name="dataVenda" class="input-field" value="${a.dataVenda||hoje()}" required /></div>
+        <div><label class="label-field">Valor da venda (R$)</label><input type="number" step="0.01" name="valorVenda" class="input-field" value="${a.valorVenda||''}" required /></div>
+      </div>
+      <div><label class="label-field">Comprador (opcional)</label><input type="text" name="comprador" class="input-field" value="${escapeHtml(a.comprador||'')}" /></div>
+      <div><label class="label-field">Observação</label><textarea name="observacaoVenda" class="input-field" rows="2">${escapeHtml(a.observacaoVenda||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${jaVendido ? `<button type="button" class="btn-danger" onclick="desfazerVenda('${a.id}')">Desfazer venda</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${jaVendido ? 'Salvar alterações' : 'Confirmar venda'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formVenda').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valorVenda = num(fd.valorVenda);
+    fd.status = 'Vendido';
+    try {
+      await db.collection('animais').doc(a.id).update(fd);
+      // Mantém uma receita vinculada ao animal sincronizada automaticamente (sem duplicidade de lançamento)
+      const receitaExistente = state.receitas.find(r => r.animalId === a.id && r.autoGerada && r.categoria === 'Venda de animal');
+      const receitaDados = { data: fd.dataVenda, descricao: 'Venda de ' + (a.nome||'animal') + (fd.comprador ? ' para ' + fd.comprador : ''), categoria: 'Venda de animal', valor: fd.valorVenda, animalId: a.id, eventoId: null, autoGerada: true, usuarioId: state.user.uid, usuarioNome: state.usuarioNome };
+      if (receitaExistente) await db.collection('receitas').doc(receitaExistente.id).update(receitaDados);
+      else { receitaDados.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('receitas').add(receitaDados); }
+      toast('Venda registrada com sucesso.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+async function desfazerVenda(animalId) {
+  if (!confirm('Desfazer a venda deste animal? Ele volta para o status Ativo e a receita gerada automaticamente será removida.')) return;
+  const batch = db.batch();
+  batch.update(db.collection('animais').doc(animalId), { status: 'Ativo', dataVenda: null, valorVenda: null, comprador: null, observacaoVenda: null });
+  state.receitas.filter(r => r.animalId === animalId && r.autoGerada && r.categoria === 'Venda de animal').forEach(r => batch.delete(db.collection('receitas').doc(r.id)));
+  await batch.commit();
+  toast('Venda desfeita.'); closeModal();
+}
+
 function abrirFormAnimal(animal) {
   const a = animal || {};
   const isEdit = !!a.id;
@@ -1090,6 +1158,8 @@ async function excluirAnimal(id) {
   const batch = db.batch();
   batch.delete(db.collection('animais').doc(id));
   despesasDoAnimal(id).forEach(d => batch.delete(db.collection('despesas').doc(d.id)));
+  state.receitas.filter(r => r.animalId === id && r.autoGerada).forEach(r => batch.delete(db.collection('receitas').doc(r.id)));
+  saudeDoAnimal(id).forEach(s => batch.delete(db.collection('saude').doc(s.id)));
   await batch.commit();
   toast('Animal excluído.'); closeModal(); showSection('animais');
 }
@@ -1163,8 +1233,19 @@ function abrirFormFrete() {
 function abrirFormSaude(animalId, saudeExistente) {
   const isEdit = !!saudeExistente;
   const s = saudeExistente || {};
+  const precisaEscolherAnimal = !animalId && !isEdit;
+  const animalOptionsSaude = state.animais.slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''))
+    .map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join('');
   openModal(isEdit ? 'Editar registro de saúde' : 'Registrar problema de saúde', `
     <form id="formSaude" class="space-y-3">
+      ${precisaEscolherAnimal ? `
+      <div>
+        <label class="label-field">Animal</label>
+        <select name="animalIdSelecionado" class="input-field" required>
+          <option value="">Selecione o animal...</option>
+          ${animalOptionsSaude}
+        </select>
+      </div>` : ''}
       <div><label class="label-field">Doença/Problema</label><input type="text" name="doenca" class="input-field" value="${escapeHtml(s.doenca||'')}" required placeholder="Ex: Bicheira, pneumonia, claudicação..." /></div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="label-field">Data de início</label><input type="date" name="dataInicio" class="input-field" value="${s.dataInicio||hoje()}" required /></div>
@@ -1185,7 +1266,10 @@ function abrirFormSaude(animalId, saudeExistente) {
   document.getElementById('formSaude').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target).entries());
-    fd.animalId = animalId;
+    const animalIdFinal = animalId || fd.animalIdSelecionado;
+    delete fd.animalIdSelecionado;
+    if (!animalIdFinal) { toast('Selecione um animal.', true); return; }
+    fd.animalId = animalIdFinal;
     fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
     try {
       if (isEdit) {
@@ -1248,7 +1332,7 @@ function renderFinanceiro() {
         <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormReceita(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
           <div>
             <p class="text-sm font-semibold">${escapeHtml(r.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(r.data)}</span></p>
-            <p class="text-xs text-zinc-400">${escapeHtml(r.descricao||'')}</p>
+            <p class="text-xs text-zinc-400">${escapeHtml(r.descricao||'')} ${r.animalId ? '🐂' : ''}${r.eventoId ? '🏆' : ''}</p>
           </div>
           <p class="font-bold text-sm text-green-600">${fmtMoeda(r.valor)}</p>
         </div>
@@ -1287,8 +1371,10 @@ function abrirFormReceita(receitaExistente) {
   const isEdit = !!receitaExistente;
   const r = receitaExistente || {};
   const eventoOptions = state.eventos.map(e => `<option value="${e.id}" ${r.eventoId===e.id?'selected':''}>${escapeHtml(e.nome)}</option>`).join('');
+  const animalOptionsReceita = state.animais.map(a => `<option value="${a.id}" ${r.animalId===a.id?'selected':''}>${escapeHtml(a.nome)}</option>`).join('');
   openModal(isEdit ? 'Editar receita' : 'Nova receita', `
     <form id="formReceita" class="space-y-3">
+      ${r.autoGerada ? `<p class="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Essa receita foi gerada automaticamente (venda de animal ou evento). Se editar o valor aqui, atualize também na ficha do animal/evento para manter tudo igual.</p>` : ''}
       <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${r.data||hoje()}" required /></div>
       <div>
         <label class="label-field">Categoria</label>
@@ -1296,6 +1382,7 @@ function abrirFormReceita(receitaExistente) {
       </div>
       <div><label class="label-field">Descrição</label><input type="text" name="descricao" class="input-field" value="${escapeHtml(r.descricao||'')}" /></div>
       <div><label class="label-field">Valor (R$)</label><input type="number" step="0.01" name="valor" class="input-field" value="${r.valor||''}" required /></div>
+      <div><label class="label-field">Animal relacionado (opcional)</label><select name="animalId" class="input-field"><option value="">Nenhum</option>${animalOptionsReceita}</select></div>
       <div><label class="label-field">Evento relacionado (opcional)</label><select name="eventoId" class="input-field"><option value="">Nenhum</option>${eventoOptions}</select></div>
       <div><label class="label-field">Observação</label><textarea name="observacao" class="input-field" rows="2">${escapeHtml(r.observacao||'')}</textarea></div>
       <div class="flex gap-2 pt-2">
@@ -1307,7 +1394,7 @@ function abrirFormReceita(receitaExistente) {
   document.getElementById('formReceita').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target).entries());
-    fd.valor = num(fd.valor); if (!fd.eventoId) fd.eventoId = null;
+    fd.valor = num(fd.valor); if (!fd.eventoId) fd.eventoId = null; if (!fd.animalId) fd.animalId = null;
     try { await salvarReceita(fd, isEdit ? r.id : null); toast('Receita salva.'); closeModal(); }
     catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
   });
@@ -1516,7 +1603,7 @@ function renderPatrimonio() {
   const dataCot = cot.atualizadoEm ? new Date(cot.atualizadoEm).toLocaleDateString('pt-BR') : '—';
   document.getElementById('section-patrimonio').innerHTML = `
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-      <div class="stat-tile bg-amber-700 text-white">
+      <div class="stat-tile bg-teal-700 text-white">
         <p class="text-xs opacity-80">Patrimônio estimado</p>
         <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
         <p class="text-[11px] opacity-70 mt-1">Animais pelo valor de mercado de rodeio</p>
@@ -1819,7 +1906,7 @@ function renderConteudoRelatorio() {
   else if (f.tipo === 'patrimonial') {
     el.innerHTML = `
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-        <div class="stat-tile bg-amber-700 text-white">
+        <div class="stat-tile bg-teal-700 text-white">
           <p class="text-xs opacity-80">Patrimônio estimado</p>
           <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
         </div>
