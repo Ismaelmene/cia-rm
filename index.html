@@ -167,6 +167,7 @@ const state = {
   equipamentos: [],
   outrosBens: [],
   saude: [],
+  fundoReserva: [],
   arenaConfig: { valorEstimadoTotal: 0, dataInicio: '', previsaoConclusao: '', status: 'Planejado' },
   cotacaoMercado: { valor: 0, atualizadoEm: null, municipio: '', fonte: '' },
   unsubscribers: []
@@ -177,6 +178,7 @@ const CATEGORIAS_DESPESA_GERAL = ['Animais','Alimentação','Vacina','Medicament
 const CATEGORIAS_RECEITA = ['Cachê','Evento','Patrocínio','Venda de animal','Aluguel','Outros'];
 const CATEGORIAS_ARENA = ['Terreno','Estrutura','Arquibancada','Bretes','Curral','Alambrado','Iluminação','Instalação elétrica','Banheiros','Cobertura','Sonorização','Bilheteria','Escritório','Equipamentos','Mão de obra','Material','Outros'];
 const PRODUTOS_ALIMENTACAO = ['Ração','Sal mineral','Feno','Silagem','Suplementação','Outros'];
+const UNIDADES_MEDIDA = ['UN','KG','L','MT','CM','ML','CX'];
 const STATUS_ANIMAL = ['Ativo','Vendido','Aposentado','Falecido','Outro'];
 const STATUS_EVENTO = ['Planejado','Confirmado','Realizado','Cancelado'];
 
@@ -348,6 +350,7 @@ function iniciarListeners() {
     db.collection('equipamentos').onSnapshot(snap => { state.equipamentos = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('outrosBens').onSnapshot(snap => { state.outrosBens = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('saude').onSnapshot(snap => { state.saude = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('fundoReserva').onSnapshot(snap => { state.fundoReserva = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('config').doc('arena').onSnapshot(snap => { if (snap.exists) state.arenaConfig = snap.data(); refreshAll(); }, erroListener),
     db.collection('config').doc('cotacaoMercado').onSnapshot(snap => {
       if (snap.exists) state.cotacaoMercado = snap.data();
@@ -394,6 +397,30 @@ function despesasDoAnimal(animalId) {
   return state.despesas.filter(d => d.animalId === animalId);
 }
 
+/* ---- Situação do lançamento: Pago (já realizado) ou Previsto (conta a pagar /
+   investimento futuro). Vale para qualquer categoria — animal, saúde, evento,
+   arena ou geral — não só Arena como era antes. Lançamentos antigos sem esse
+   campo são tratados como já pagos, para não alterar os totais já existentes. */
+function situacaoDespesa(d) {
+  return d.status || d.statusArena || 'Pago';
+}
+function valorPagoDespesa(d) {
+  if (d.valorPago !== undefined && d.valorPago !== '') return num(d.valorPago);
+  return situacaoDespesa(d) === 'Previsto' ? 0 : num(d.valorTotal);
+}
+function despesasPendentes() {
+  return state.despesas.filter(d => situacaoDespesa(d) === 'Previsto').slice().sort((a,b) => (a.data||'').localeCompare(b.data||''));
+}
+function totalPendenteGeral() {
+  return despesasPendentes().reduce((s,d) => s + num(d.valorTotal), 0);
+}
+function totalPagoGeral() {
+  return state.despesas.reduce((s,d) => s + valorPagoDespesa(d), 0);
+}
+function badgeSituacaoDespesaHtml(d) {
+  return situacaoDespesa(d) === 'Previsto' ? ' <span class="badge bg-amber-100 text-amber-700">A pagar</span>' : '';
+}
+
 /* ---- Saúde dos animais (doenças/tratamentos) ---- */
 function saudeDoAnimal(animalId) {
   return state.saude.filter(s => s.animalId === animalId).slice().sort((a,b) => (b.dataInicio||'').localeCompare(a.dataInicio||''));
@@ -402,7 +429,7 @@ function despesasDaSaude(saudeId) {
   return state.despesas.filter(d => d.saudeId === saudeId);
 }
 function totalDespesasSaude(saudeId) {
-  return despesasDaSaude(saudeId).reduce((s, d) => s + num(d.valorTotal), 0);
+  return despesasDaSaude(saudeId).reduce((s, d) => s + valorPagoDespesa(d), 0);
 }
 function animaisEmTratamentoIds() {
   return new Set(state.saude.filter(s => s.status === 'Em tratamento').map(s => s.animalId));
@@ -412,10 +439,10 @@ function registrosSaudeEmTratamento() {
 }
 function totalDespesasSaudeMes(ym) {
   const idsSaude = new Set(state.saude.map(s => s.id));
-  return state.despesas.filter(d => d.saudeId && idsSaude.has(d.saudeId) && mesAno(d.data) === ym).reduce((s, d) => s + num(d.valorTotal), 0);
+  return state.despesas.filter(d => d.saudeId && idsSaude.has(d.saudeId) && mesAno(d.data) === ym).reduce((s, d) => s + valorPagoDespesa(d), 0);
 }
 function custoTotalAnimal(animal) {
-  const despesas = despesasDoAnimal(animal.id).reduce((s, d) => s + num(d.valorTotal), 0);
+  const despesas = despesasDoAnimal(animal.id).reduce((s, d) => s + valorPagoDespesa(d), 0);
   return num(animal.valorCompra) + despesas;
 }
 function valorPesoAnimal(animal) {
@@ -451,14 +478,14 @@ function totalReceitas(filterFn) {
   return state.receitas.filter(filterFn || (() => true)).reduce((s, r) => s + num(r.valor), 0);
 }
 function totalDespesas(filterFn) {
-  return state.despesas.filter(filterFn || (() => true)).reduce((s, d) => s + num(d.valorTotal), 0);
+  return state.despesas.filter(filterFn || (() => true)).reduce((s, d) => s + valorPagoDespesa(d), 0);
 }
 function saldoAtual() {
   return totalReceitas() - totalDespesas();
 }
 
 function totalInvestidoArena() {
-  return state.despesas.filter(d => d.categoria === 'Arena').reduce((s, d) => s + num(d.valorPago !== undefined && d.valorPago !== '' ? d.valorPago : d.valorTotal), 0);
+  return state.despesas.filter(d => d.categoria === 'Arena').reduce((s, d) => s + valorPagoDespesa(d), 0);
 }
 function totalPrevistoArena() {
   return num(state.arenaConfig.valorEstimadoTotal);
@@ -502,13 +529,19 @@ function custosDoEvento(eventoId) {
   return state.despesas.filter(d => d.eventoId === eventoId);
 }
 function totalCustosEvento(eventoId) {
-  return custosDoEvento(eventoId).reduce((s, d) => s + num(d.valorTotal), 0);
+  return custosDoEvento(eventoId).reduce((s, d) => s + valorPagoDespesa(d), 0);
 }
 function receitaEvento(evento) {
   return num(evento.valorCache);
 }
 function lucroEvento(evento) {
   return receitaEvento(evento) - totalCustosEvento(evento.id);
+}
+
+/* ---- Fundo de reserva (dinheiro dos sócios depositado à parte para
+   imprevistos/remédio — não entra nas receitas/despesas normais da cia). */
+function saldoFundoReserva() {
+  return state.fundoReserva.reduce((s, m) => s + (m.tipo === 'Retirada' ? -num(m.valor) : num(m.valor)), 0);
 }
 
 /* =========================================================================
@@ -583,24 +616,29 @@ function abrirFormDespesa(contexto, vinculoId, despesaExistente, extraVinculo) {
         </div>
         <div>
           <label class="label-field">Unidade</label>
-          <input type="text" name="unidade" class="input-field" value="${escapeHtml(d.unidade||'')}" placeholder="kg, un..." />
+          <select name="unidade" class="input-field">
+            <option value="">—</option>
+            ${UNIDADES_MEDIDA.map(u => `<option ${d.unidade===u?'selected':''}>${u}</option>`).join('')}
+            ${d.unidade && !UNIDADES_MEDIDA.includes(d.unidade) ? `<option selected>${escapeHtml(d.unidade)}</option>` : ''}
+          </select>
         </div>
         <div>
           <label class="label-field">Vl. unitário</label>
           <input type="number" step="0.01" name="valorUnitario" id="despUnit" class="input-field" value="${d.valorUnitario||''}" oninput="calcularValorTotalDespesa()" />
         </div>
       </div>
-      <div id="arenaExtraFields" class="grid grid-cols-2 gap-3 ${contexto==='arena'?'':'hidden'}">
+      <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="label-field">Valor previsto</label>
-          <input type="number" step="0.01" name="valorPrevisto" class="input-field" value="${d.valorPrevisto||''}" />
-        </div>
-        <div>
-          <label class="label-field">Status</label>
-          <select name="statusArena" class="input-field">
-            <option ${d.statusArena==='Previsto'?'selected':''}>Previsto</option>
-            <option ${d.statusArena==='Pago'?'selected':''}>Pago</option>
+          <label class="label-field">Situação</label>
+          <select name="situacao" class="input-field">
+            <option ${situacaoDespesa(d)==='Pago'?'selected':''}>Pago</option>
+            <option ${situacaoDespesa(d)==='Previsto'?'selected':''}>Previsto</option>
           </select>
+          <p class="text-[11px] text-zinc-400 mt-1">"Previsto" = conta a pagar/investimento futuro, ainda não entra nos totais realizados.</p>
+        </div>
+        <div id="arenaExtraFields" class="${contexto==='arena'?'':'hidden'}">
+          <label class="label-field">Valor previsto (orçamento)</label>
+          <input type="number" step="0.01" name="valorPrevisto" class="input-field" value="${d.valorPrevisto||''}" />
         </div>
       </div>
       <div id="vacinaExtraFields" class="grid grid-cols-2 gap-3 hidden">
@@ -637,15 +675,17 @@ function abrirFormDespesa(contexto, vinculoId, despesaExistente, extraVinculo) {
     dados.valorUnitario = dados.valorUnitario ? num(dados.valorUnitario) : null;
     dados.valorTotal = num(dados.valorTotal);
     if (dados.valorPrevisto !== undefined) dados.valorPrevisto = dados.valorPrevisto ? num(dados.valorPrevisto) : null;
+    dados.status = dados.situacao === 'Previsto' ? 'Previsto' : 'Pago';
+    dados.valorPago = dados.status === 'Pago' ? dados.valorTotal : 0;
+    delete dados.situacao;
+    delete dados.statusArena;
     if (contexto === 'animal') dados.animalId = vinculoId;
     if (contexto === 'saude') { dados.animalId = vinculoId; dados.saudeId = extraVinculo; }
     if (contexto === 'evento') dados.eventoId = vinculoId;
     if (contexto === 'arena') {
       dados.arenaCategoria = dados.categoria;
       dados.categoria = 'Arena';
-      dados.valorPago = dados.statusArena === 'Pago' ? dados.valorTotal : 0;
     } else {
-      delete dados.statusArena;
       delete dados.valorPrevisto;
     }
     if (!dados.animalId) dados.animalId = null;
@@ -951,7 +991,7 @@ function renderAnimalFicha(id) {
       ${despesas.length ? despesas.map(d => `
         <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("animal","${a.id}",${JSON.stringify(d).replace(/'/g,"&#39;")})'>
           <div>
-            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span>${badgeSituacaoDespesaHtml(d)}</p>
             <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')}</p>
           </div>
           <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
@@ -978,9 +1018,13 @@ function abrirFormPeso(animalId) {
   const a = state.animais.find(x => x.id === animalId);
   openModal('Atualizar valor pelo peso', `
     <form id="formPeso" class="space-y-3">
-      <div><label class="label-field">Peso atual (kg)</label><input type="number" step="0.1" name="pesoAtual" class="input-field" value="${a.pesoAtual||''}" /></div>
+      <div><label class="label-field">Peso atual (kg)</label><input type="number" step="0.1" name="pesoAtual" id="inputPesoAtual" class="input-field" value="${a.pesoAtual||''}" oninput="calcularArrobasAutomatico()" /></div>
       <div><label class="label-field">Data da pesagem</label><input type="date" name="dataUltimaPesagem" class="input-field" value="${a.dataUltimaPesagem||hoje()}" /></div>
-      <div><label class="label-field">Quantidade de arrobas</label><input type="number" step="0.01" name="arrobas" class="input-field" value="${a.arrobas||''}" /></div>
+      <div>
+        <label class="label-field">Quantidade de arrobas</label>
+        <input type="number" step="0.01" name="arrobas" id="inputArrobas" class="input-field" value="${a.arrobas||''}" />
+        <p class="text-[11px] text-zinc-400 mt-1">Calculada automaticamente pelo peso (1 @ = 30 kg) — pode ajustar manualmente se precisar.</p>
+      </div>
       <div>
         <label class="label-field">Cotação da arroba (R$)</label>
         <div class="flex gap-2">
@@ -999,6 +1043,11 @@ function abrirFormPeso(animalId) {
     await db.collection('animais').doc(animalId).update(fd);
     toast('Valor pelo peso atualizado.'); closeModal();
   });
+}
+
+function calcularArrobasAutomatico() {
+  const peso = num(document.getElementById('inputPesoAtual').value);
+  if (peso > 0) document.getElementById('inputArrobas').value = (peso / 30).toFixed(2);
 }
 
 async function buscarCotacaoArroba() {
@@ -1316,11 +1365,16 @@ function abrirFormEvolucao(saudeId) {
 function renderFinanceiro() {
   const receitas = state.receitas.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
   const despesas = state.despesas.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  const movimentosFundo = state.fundoReserva.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
   document.getElementById('section-financeiro').innerHTML = `
-    <div class="grid grid-cols-3 gap-2 mb-4">
+    <div class="grid grid-cols-3 gap-2 mb-2">
       <div class="stat-tile"><p class="text-[11px] text-zinc-500">Receitas</p><p class="font-bold text-green-600 text-sm">${fmtMoeda(totalReceitas())}</p></div>
       <div class="stat-tile"><p class="text-[11px] text-zinc-500">Despesas</p><p class="font-bold text-red-600 text-sm">${fmtMoeda(totalDespesas())}</p></div>
       <div class="stat-tile"><p class="text-[11px] text-zinc-500">Saldo</p><p class="font-bold text-sm ${saldoAtual()>=0?'text-green-600':'text-red-600'}">${fmtMoeda(saldoAtual())}</p></div>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      <div class="stat-tile cursor-pointer" onclick="mudarFiltroRelatorio('tipo','futuros');showSection('relatorios')"><p class="text-[11px] text-zinc-500">A pagar (previsto)</p><p class="font-bold text-amber-700 text-sm">${fmtMoeda(totalPendenteGeral())}</p></div>
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">🐖 Fundo de reserva</p><p class="font-bold text-blue-700 text-sm">${fmtMoeda(saldoFundoReserva())}</p></div>
     </div>
 
     <div class="flex items-center justify-between mb-2">
@@ -1347,12 +1401,36 @@ function renderFinanceiro() {
       ${despesas.length ? despesas.map(d => `
         <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("geral", null, ${JSON.stringify(d).replace(/'/g,"&#39;")})'>
           <div>
-            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span>${badgeSituacaoDespesaHtml(d)}</p>
             <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')} ${d.animalId ? '🐂' : ''}${d.eventoId ? '🏆' : ''}</p>
           </div>
           <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
         </div>
       `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhuma despesa registrada.</p>'}
+    </div>
+
+    <div class="flex items-center justify-between mb-2 mt-5">
+      <h3 class="font-bold text-sm text-zinc-500">🐖 FUNDO DE RESERVA</h3>
+      <div class="flex gap-2">
+        <button onclick="abrirFormFundoReserva('Depósito')" class="btn-secondary text-xs">+ Depósito</button>
+        <button onclick="abrirFormFundoReserva('Retirada')" class="btn-secondary text-xs">- Retirada</button>
+      </div>
+    </div>
+    <div class="stat-tile bg-blue-700 text-white mb-3">
+      <p class="text-xs opacity-80">Saldo do fundo</p>
+      <p class="text-2xl font-bold">${fmtMoeda(saldoFundoReserva())}</p>
+      <p class="text-[11px] opacity-70 mt-1">Dinheiro depositado à parte pelos sócios para imprevistos/remédio — não entra nas contas normais da cia.</p>
+    </div>
+    <div class="space-y-2">
+      ${movimentosFundo.length ? movimentosFundo.map(m => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormFundoReserva("${m.tipo}", ${JSON.stringify(m).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${m.tipo === 'Retirada' ? '↓ Retirada' : '↑ Depósito'} <span class="text-zinc-400 font-normal">· ${fmtData(m.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(m.descricao||'')} ${m.usuarioNome ? '· '+escapeHtml(m.usuarioNome) : ''}</p>
+          </div>
+          <p class="font-bold text-sm ${m.tipo==='Retirada'?'text-red-600':'text-green-600'}">${m.tipo==='Retirada'?'-':'+'}${fmtMoeda(m.valor)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhuma movimentação registrada no fundo ainda.</p>'}
     </div>
   `;
 }
@@ -1398,6 +1476,46 @@ function abrirFormReceita(receitaExistente) {
     try { await salvarReceita(fd, isEdit ? r.id : null); toast('Receita salva.'); closeModal(); }
     catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
   });
+}
+
+/* ---- Fundo de reserva ---- */
+function abrirFormFundoReserva(tipo, existente) {
+  const isEdit = !!existente;
+  const m = existente || {};
+  openModal(isEdit ? 'Editar movimentação do fundo' : (tipo === 'Retirada' ? '- Retirada do fundo' : '+ Depósito no fundo'), `
+    <form id="formFundoReserva" class="space-y-3">
+      <input type="hidden" name="tipo" value="${m.tipo || tipo}" />
+      <p class="text-sm text-zinc-500">${(m.tipo||tipo) === 'Retirada' ? 'Retirada do fundo de reserva (ex: usado para um imprevisto ou remédio).' : 'Depósito mensal dos sócios no fundo de reserva, à parte da conta normal da cia.'}</p>
+      <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${m.data||hoje()}" required /></div>
+      <div><label class="label-field">Valor (R$)</label><input type="number" step="0.01" name="valor" class="input-field" value="${m.valor||''}" required /></div>
+      <div><label class="label-field">Descrição</label><input type="text" name="descricao" class="input-field" value="${escapeHtml(m.descricao||'')}" placeholder="${(m.tipo||tipo)==='Retirada' ? 'Ex: remédio do Trovão' : 'Ex: depósito mensal de setembro'}" /></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirFundoReserva('${m.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit ? 'Salvar alterações' : 'Salvar'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formFundoReserva').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valor = num(fd.valor);
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    try {
+      if (isEdit) {
+        fd.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('fundoReserva').doc(m.id).update(fd);
+      } else {
+        fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('fundoReserva').add(fd);
+      }
+      toast('Movimentação salva.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+async function excluirFundoReserva(id) {
+  if (!confirm('Excluir esta movimentação do fundo de reserva?')) return;
+  await db.collection('fundoReserva').doc(id).delete();
+  toast('Movimentação excluída.'); closeModal();
 }
 /* PLACEHOLDER_FINANCEIRO */
 /* =========================================================================
@@ -1465,7 +1583,7 @@ function renderEventoDetalhe(id) {
       ${custos.length ? custos.map(d => `
         <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("evento","${ev.id}",${JSON.stringify(d).replace(/'/g,"&#39;")})'>
           <div>
-            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span>${badgeSituacaoDespesaHtml(d)}</p>
             <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')}</p>
           </div>
           <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
@@ -1562,7 +1680,7 @@ function renderArena() {
       ${investimentos.length ? investimentos.map(d => `
         <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("arena", null, ${JSON.stringify(d).replace(/'/g,"&#39;")})'>
           <div>
-            <p class="text-sm font-semibold">${escapeHtml(d.arenaCategoria||d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-sm font-semibold">${escapeHtml(d.arenaCategoria||d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span>${badgeSituacaoDespesaHtml(d)}</p>
             <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||d.fornecedor||'')}</p>
           </div>
           <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
@@ -1768,7 +1886,7 @@ function renderRelatorios() {
 
   const tipos = [
     { id: 'animais', label: 'Animais' }, { id: 'saude', label: '🏥 Saúde' }, { id: 'financeiro', label: 'Financeiro' },
-    { id: 'eventos', label: 'Eventos' }, { id: 'arena', label: 'Arena' }, { id: 'patrimonial', label: 'Patrimonial' }
+    { id: 'futuros', label: '📅 Futuros' }, { id: 'eventos', label: 'Eventos' }, { id: 'arena', label: 'Arena' }, { id: 'patrimonial', label: 'Patrimonial' }
   ];
 
   document.getElementById('section-relatorios').innerHTML = `
@@ -1883,6 +2001,45 @@ function renderConteudoRelatorio() {
         <table class="w-full text-xs whitespace-nowrap">
           <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Evento</th><th class="pr-2">Data</th><th class="pr-2">Status</th><th class="pr-2">Receita</th><th class="pr-2">Custos</th><th>Lucro</th></tr></thead>
           <tbody>${linhas || '<tr><td colspan="6" class="py-4 text-center text-zinc-400">Nenhum evento no período.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  else if (f.tipo === 'futuros') {
+    const pendentes = despesasPendentes();
+    const linhas = pendentes.map(d => {
+      let origem = '—';
+      if (d.animalId) { const an = state.animais.find(a => a.id === d.animalId); origem = '🐂 ' + (an ? escapeHtml(an.nome) : 'Animal'); }
+      else if (d.eventoId) { const ev = state.eventos.find(e => e.id === d.eventoId); origem = '🏆 ' + (ev ? escapeHtml(ev.nome) : 'Evento'); }
+      else if (d.categoria === 'Arena') origem = '🏟️ Arena';
+      else origem = 'Geral';
+      return `
+      <tr class="border-b border-zinc-100">
+        <td class="py-2 pr-2">${fmtData(d.data)}</td>
+        <td class="py-2 pr-2">${origem}</td>
+        <td class="py-2 pr-2">${escapeHtml(d.arenaCategoria||d.categoria)}</td>
+        <td class="py-2 pr-2">${escapeHtml(d.descricao||'')}</td>
+        <td class="py-2 text-amber-700 font-semibold">${fmtMoeda(d.valorTotal)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="stat-tile"><p class="text-xs text-zinc-500">A pagar (previsto)</p><p class="font-bold text-amber-700">${fmtMoeda(totalPendenteGeral())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Já pago (geral)</p><p class="font-bold text-green-700">${fmtMoeda(totalPagoGeral())}</p></div>
+      </div>
+      <div class="card p-4 mb-4">
+        <div class="flex justify-between items-center mb-1">
+          <h3 class="font-bold text-sm text-zinc-500">🏟️ ANDAMENTO DA OBRA (ARENA)</h3>
+          <p class="text-xs font-bold">${percentualConclusaoArena().toFixed(0)}%</p>
+        </div>
+        <div class="w-full bg-zinc-100 rounded-full h-2 mb-2"><div class="bg-amber-600 h-2 rounded-full" style="width:${percentualConclusaoArena()}%"></div></div>
+        <p class="text-xs text-zinc-500">Orçamento: <b>${fmtMoeda(totalPrevistoArena())}</b> · Investido: <b>${fmtMoeda(totalInvestidoArena())}</b></p>
+      </div>
+      <h3 class="font-bold text-sm text-zinc-500 mb-2">CONTAS A PAGAR / INVESTIMENTOS FUTUROS</h3>
+      <div class="overflow-x-auto card p-3">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Data</th><th class="pr-2">Origem</th><th class="pr-2">Categoria</th><th class="pr-2">Descrição</th><th>Valor</th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="5" class="py-4 text-center text-zinc-400">Nenhum lançamento futuro pendente. 🎉</td></tr>'}</tbody>
         </table>
       </div>`;
   }
