@@ -819,7 +819,14 @@ function abrirFormPeso(animalId) {
       <div><label class="label-field">Peso atual (kg)</label><input type="number" step="0.1" name="pesoAtual" class="input-field" value="${a.pesoAtual||''}" /></div>
       <div><label class="label-field">Data da pesagem</label><input type="date" name="dataUltimaPesagem" class="input-field" value="${a.dataUltimaPesagem||hoje()}" /></div>
       <div><label class="label-field">Quantidade de arrobas</label><input type="number" step="0.01" name="arrobas" class="input-field" value="${a.arrobas||''}" /></div>
-      <div><label class="label-field">Cotação da arroba (R$)</label><input type="number" step="0.01" name="cotacaoArroba" class="input-field" value="${a.cotacaoArroba||''}" /></div>
+      <div>
+        <label class="label-field">Cotação da arroba (R$)</label>
+        <div class="flex gap-2">
+          <input type="number" step="0.01" name="cotacaoArroba" id="inputCotacaoArroba" class="input-field flex-1" value="${a.cotacaoArroba||''}" placeholder="Digite manualmente ou busque ao lado" />
+          <button type="button" id="btnBuscarCotacao" onclick="buscarCotacaoArroba()" class="btn-secondary text-xs whitespace-nowrap px-3">🔄 Buscar</button>
+        </div>
+        <p id="cotacaoStatus" class="text-[11px] text-zinc-400 mt-1">Busca a cotação de Nova Xavantina-MT (fonte: IMEA). Você também pode digitar o valor manualmente a qualquer momento.</p>
+      </div>
       <button type="submit" class="btn-primary w-full">Salvar</button>
     </form>
   `);
@@ -830,6 +837,29 @@ function abrirFormPeso(animalId) {
     await db.collection('animais').doc(animalId).update(fd);
     toast('Valor pelo peso atualizado.'); closeModal();
   });
+}
+
+async function buscarCotacaoArroba() {
+  const btn = document.getElementById('btnBuscarCotacao');
+  const status = document.getElementById('cotacaoStatus');
+  const input = document.getElementById('inputCotacaoArroba');
+  btn.disabled = true; btn.textContent = 'Buscando...';
+  status.textContent = 'Buscando cotação em Nova Xavantina-MT...';
+  status.className = 'text-[11px] text-zinc-400 mt-1';
+  try {
+    const resp = await fetch('/api/cotacao-arroba');
+    const dados = await resp.json();
+    if (!resp.ok || !dados.ok) throw new Error(dados.erro || 'Não foi possível buscar a cotação agora.');
+    input.value = dados.valor.toFixed(2);
+    const dataConsulta = new Date(dados.consultadoEm).toLocaleDateString('pt-BR');
+    status.textContent = `✅ R$ ${dados.valor.toFixed(2)} — ${dados.municipio} · ${dados.fonte} · ${dataConsulta}`;
+    status.className = 'text-[11px] text-green-600 mt-1';
+  } catch (err) {
+    status.textContent = '⚠️ ' + err.message + ' Digite o valor manualmente no campo ao lado.';
+    status.className = 'text-[11px] text-red-500 mt-1';
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Buscar';
+  }
 }
 
 function abrirFormMercado(animalId) {
