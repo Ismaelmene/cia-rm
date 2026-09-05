@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Gestão da Companhia de Rodeio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐂</text></svg>" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#f4f5f7; }
+  .hidden { display: none !important; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; }
+  .nav-btn.active { color: #b45309; }
+  .nav-btn.active .nav-icon { transform: translateY(-2px); }
+  .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06); }
+  .input-field { width:100%; border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; font-size:15px; background:#fff; }
+  .input-field:focus { outline:none; border-color:#b45309; box-shadow:0 0 0 3px rgba(180,83,9,.12); }
+  .label-field { font-size:12.5px; font-weight:600; color:#52525b; margin-bottom:4px; display:block; }
+  .btn-primary { background:#b45309; color:#fff; font-weight:600; border-radius:10px; padding:10px 16px; }
+  .btn-primary:active { background:#92400e; }
+  .btn-secondary { background:#f4f4f5; color:#3f3f46; font-weight:600; border-radius:10px; padding:10px 16px; }
+  .btn-danger { background:#fef2f2; color:#b91c1c; font-weight:600; border-radius:10px; padding:8px 12px; }
+  .modal-backdrop { background: rgba(0,0,0,.5); }
+  .section { animation: fadein .15s ease-out; }
+  @keyframes fadein { from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+  .stat-tile { background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+</style>
+</head>
+<body class="text-zinc-800">
+
+<!-- ===================== LOGIN SCREEN ===================== -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center px-6">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-2">🐂</div>
+      <h1 class="text-xl font-bold text-zinc-800">Companhia de Rodeio</h1>
+      <p class="text-sm text-zinc-500 mt-1">Painel de gestão interna</p>
+    </div>
+    <form id="loginForm" class="card p-5 space-y-3">
+      <div>
+        <label class="label-field">E-mail</label>
+        <input type="email" id="loginEmail" class="input-field" required autocomplete="username" />
+      </div>
+      <div>
+        <label class="label-field">Senha</label>
+        <input type="password" id="loginSenha" class="input-field" required autocomplete="current-password" />
+      </div>
+      <p id="loginError" class="text-sm text-red-600 hidden"></p>
+      <button type="submit" id="loginBtn" class="btn-primary w-full mt-2">Entrar</button>
+    </form>
+    <p class="text-center text-xs text-zinc-400 mt-6">Acesso restrito aos sócios da companhia</p>
+  </div>
+</div>
+
+<!-- ===================== APP SHELL ===================== -->
+<div id="appScreen" class="hidden min-h-screen pb-20">
+  <header class="bg-white border-b border-zinc-200 sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">🐂</span>
+        <div>
+          <h1 class="font-bold text-sm leading-tight" id="headerTitle">Dashboard</h1>
+          <p class="text-[11px] text-zinc-400 leading-tight" id="headerUser"></p>
+        </div>
+      </div>
+      <button onclick="logout()" class="text-xs font-semibold text-zinc-500 px-3 py-1.5 rounded-lg bg-zinc-100">Sair</button>
+    </div>
+  </header>
+
+  <main id="mainContent" class="max-w-5xl mx-auto px-4 py-4">
+
+    <section id="section-dashboard" class="section"></section>
+    <section id="section-animais" class="section hidden"></section>
+    <section id="section-animal-ficha" class="section hidden"></section>
+    <section id="section-financeiro" class="section hidden"></section>
+    <section id="section-eventos" class="section hidden"></section>
+    <section id="section-evento-detalhe" class="section hidden"></section>
+    <section id="section-arena" class="section hidden"></section>
+    <section id="section-patrimonio" class="section hidden"></section>
+    <section id="section-relatorios" class="section hidden"></section>
+    <section id="section-config" class="section hidden"></section>
+
+  </main>
+
+  <nav class="fixed bottom-0 inset-x-0 bg-white border-t border-zinc-200 z-30">
+    <div class="max-w-5xl mx-auto grid grid-cols-4 sm:grid-cols-8 text-center">
+      <button class="nav-btn active py-2 text-zinc-500" data-section="dashboard" onclick="showSection('dashboard')">
+        <div class="nav-icon text-lg">🏠</div><div class="text-[10px] font-semibold">Dashboard</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="animais" onclick="showSection('animais')">
+        <div class="nav-icon text-lg">🐂</div><div class="text-[10px] font-semibold">Animais</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="financeiro" onclick="showSection('financeiro')">
+        <div class="nav-icon text-lg">💰</div><div class="text-[10px] font-semibold">Financeiro</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="eventos" onclick="showSection('eventos')">
+        <div class="nav-icon text-lg">🏆</div><div class="text-[10px] font-semibold">Eventos</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="arena" onclick="showSection('arena')">
+        <div class="nav-icon text-lg">🏟️</div><div class="text-[10px] font-semibold">Arena</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="patrimonio" onclick="showSection('patrimonio')">
+        <div class="nav-icon text-lg">📦</div><div class="text-[10px] font-semibold">Patrimônio</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="relatorios" onclick="showSection('relatorios')">
+        <div class="nav-icon text-lg">📊</div><div class="text-[10px] font-semibold">Relatórios</div>
+      </button>
+      <button class="nav-btn py-2 text-zinc-500" data-section="config" onclick="showSection('config')">
+        <div class="nav-icon text-lg">⚙️</div><div class="text-[10px] font-semibold">Config</div>
+      </button>
+    </div>
+  </nav>
+</div>
+
+<!-- ===================== MODAL GENÉRICO ===================== -->
+<div id="modalContainer" class="hidden fixed inset-0 z-50 modal-backdrop flex items-end sm:items-center justify-center">
+  <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-5 pt-5 pb-2 sticky top-0 bg-white">
+      <h3 id="modalTitle" class="font-bold text-base"></h3>
+      <button onclick="closeModal()" class="text-zinc-400 text-2xl leading-none">&times;</button>
+    </div>
+    <div id="modalBody" class="px-5 pb-6"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   CONFIGURAÇÃO DO FIREBASE
+   >>> SUBSTITUA os valores abaixo pelas chaves do SEU projeto Firebase <<<
+   Console Firebase > Configurações do projeto > Seus apps > app Web
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "COLE_AQUI_SUA_API_KEY",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO",
+  storageBucket: "SEU_PROJETO.appspot.com",
+  messagingSenderId: "SEU_SENDER_ID",
+  appId: "SEU_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* =========================================================================
+   ESTADO GLOBAL
+   ========================================================================= */
+const state = {
+  user: null,
+  usuarioNome: '',
+  currentSection: 'dashboard',
+  currentAnimalId: null,
+  currentEventoId: null,
+  usuarios: [],
+  animais: [],
+  despesas: [],
+  receitas: [],
+  eventos: [],
+  fretes: [],
+  veiculos: [],
+  equipamentos: [],
+  outrosBens: [],
+  arenaConfig: { valorEstimadoTotal: 0, dataInicio: '', previsaoConclusao: '', status: 'Planejado' },
+  unsubscribers: []
+};
+
+const CATEGORIAS_DESPESA_ANIMAL = ['Alimentação','Vacina','Medicamento','Veterinário','Tratamento','Frete','Exame','Manutenção','Outros'];
+const CATEGORIAS_DESPESA_GERAL = ['Animais','Alimentação','Vacina','Medicamento','Veterinário','Tratamento','Frete','Transporte','Combustível','Funcionários','Equipamentos','Manutenção','Arena','Eventos','Documentação','Outros'];
+const CATEGORIAS_RECEITA = ['Cachê','Evento','Patrocínio','Venda de animal','Aluguel','Outros'];
+const CATEGORIAS_ARENA = ['Terreno','Estrutura','Arquibancada','Bretes','Curral','Alambrado','Iluminação','Instalação elétrica','Banheiros','Cobertura','Sonorização','Bilheteria','Escritório','Equipamentos','Mão de obra','Material','Outros'];
+const PRODUTOS_ALIMENTACAO = ['Ração','Sal mineral','Feno','Silagem','Suplementação','Outros'];
+const STATUS_ANIMAL = ['Ativo','Vendido','Aposentado','Falecido','Outro'];
+const STATUS_EVENTO = ['Planejado','Confirmado','Realizado','Cancelado'];
+
+/* =========================================================================
+   UTILITÁRIOS
+   ========================================================================= */
+function fmtMoeda(v) {
+  v = Number(v) || 0;
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function fmtData(d) {
+  if (!d) return '—';
+  const dt = typeof d === 'string' ? new Date(d + 'T00:00:00') : d;
+  if (isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('pt-BR');
+}
+function hoje() { return new Date().toISOString().slice(0,10); }
+function mesAno(dataStr) { return (dataStr || '').slice(0,7); }
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function toast(msg, isError) {
+  const el = document.createElement('div');
+  el.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-lg text-sm font-semibold shadow-lg ' + (isError ? 'bg-red-600 text-white' : 'bg-zinc-900 text-white');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+function resizeImageFile(file, maxSize, cb) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > h && w > maxSize) { h = h * (maxSize / w); w = maxSize; }
+      else if (h > maxSize) { w = w * (maxSize / h); h = maxSize; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* =========================================================================
+   MODAL GENÉRICO
+   ========================================================================= */
+function openModal(title, bodyHtml) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalContainer').classList.remove('hidden');
+}
+function closeModal() {
+  document.getElementById('modalContainer').classList.add('hidden');
+  document.getElementById('modalBody').innerHTML = '';
+}
+
+/* =========================================================================
+   AUTENTICAÇÃO
+   ========================================================================= */
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  auth.signInWithEmailAndPassword(email, senha)
+    .catch(err => {
+      let msg = 'Não foi possível entrar. Verifique e-mail e senha.';
+      if (err.code === 'auth/invalid-email') msg = 'E-mail inválido.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') msg = 'E-mail ou senha incorretos.';
+      if (err.code === 'auth/too-many-requests') msg = 'Muitas tentativas. Tente novamente em instantes.';
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Entrar'; });
+});
+
+function logout() {
+  auth.signOut();
+}
+
+auth.onAuthStateChanged(async function(user) {
+  if (user) {
+    state.user = user;
+    await carregarUsuario(user);
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appScreen').classList.remove('hidden');
+    document.getElementById('headerUser').textContent = state.usuarioNome + ' · ' + user.email;
+    iniciarListeners();
+    showSection('dashboard');
+  } else {
+    state.user = null;
+    state.unsubscribers.forEach(u => u());
+    state.unsubscribers = [];
+    document.getElementById('appScreen').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginForm').reset();
+  }
+});
+
+async function carregarUsuario(user) {
+  const ref = db.collection('usuarios').doc(user.uid);
+  const snap = await ref.get();
+  if (snap.exists && snap.data().nome) {
+    state.usuarioNome = snap.data().nome;
+  } else {
+    let nome = prompt('Bem-vindo! Como podemos te chamar (nome do sócio)?', user.displayName || user.email.split('@')[0]);
+    if (!nome) nome = user.email.split('@')[0];
+    await ref.set({ nome: nome, email: user.email }, { merge: true });
+    state.usuarioNome = nome;
+  }
+}
+
+/* =========================================================================
+   NAVEGAÇÃO
+   ========================================================================= */
+const TITULOS_SECAO = {
+  dashboard: 'Dashboard', animais: 'Animais', 'animal-ficha': 'Ficha do Animal',
+  financeiro: 'Financeiro', eventos: 'Eventos', 'evento-detalhe': 'Evento',
+  arena: 'Arena', patrimonio: 'Patrimônio', relatorios: 'Relatórios', config: 'Configurações'
+};
+
+function showSection(id) {
+  state.currentSection = id;
+  document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('section-' + id).classList.remove('hidden');
+  document.getElementById('headerTitle').textContent = TITULOS_SECAO[id] || '';
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.section === id));
+  window.scrollTo(0,0);
+  renderSection(id);
+}
+
+function renderSection(id) {
+  if (id === 'dashboard') renderDashboard();
+  else if (id === 'animais') renderAnimaisList();
+  else if (id === 'animal-ficha') renderAnimalFicha(state.currentAnimalId);
+  else if (id === 'financeiro') renderFinanceiro();
+  else if (id === 'eventos') renderEventosList();
+  else if (id === 'evento-detalhe') renderEventoDetalhe(state.currentEventoId);
+  else if (id === 'arena') renderArena();
+  else if (id === 'patrimonio') renderPatrimonio();
+  else if (id === 'relatorios') renderRelatorios();
+  else if (id === 'config') renderConfig();
+}
+
+function refreshAll() {
+  renderSection(state.currentSection);
+}
+
+/* =========================================================================
+   LISTENERS FIRESTORE (tempo real)
+   ========================================================================= */
+function iniciarListeners() {
+  const subs = [
+    db.collection('animais').onSnapshot(snap => { state.animais = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('despesas').onSnapshot(snap => { state.despesas = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('receitas').onSnapshot(snap => { state.receitas = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('eventos').onSnapshot(snap => { state.eventos = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('fretes').onSnapshot(snap => { state.fretes = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('veiculos').onSnapshot(snap => { state.veiculos = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('equipamentos').onSnapshot(snap => { state.equipamentos = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('outrosBens').onSnapshot(snap => { state.outrosBens = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('config').doc('arena').onSnapshot(snap => { if (snap.exists) state.arenaConfig = snap.data(); refreshAll(); }, erroListener),
+    db.collection('usuarios').onSnapshot(snap => { state.usuarios = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener)
+  ];
+  state.unsubscribers = subs;
+}
+function erroListener(err) { console.error(err); toast('Erro ao carregar dados. Verifique a configuração do Firebase.', true); }
+
+/* =========================================================================
+   CÁLCULOS AUTOMÁTICOS
+   ========================================================================= */
+function despesasDoAnimal(animalId) {
+  return state.despesas.filter(d => d.animalId === animalId);
+}
+function custoTotalAnimal(animal) {
+  const despesas = despesasDoAnimal(animal.id).reduce((s, d) => s + num(d.valorTotal), 0);
+  return num(animal.valorCompra) + despesas;
+}
+function valorPesoAnimal(animal) {
+  return num(animal.arrobas) * num(animal.cotacaoArroba);
+}
+function valorMercadoAnimal(animal) {
+  return num(animal.valorMercadoRodeio);
+}
+function valorizacaoPesoAnimal(animal) {
+  return valorPesoAnimal(animal) - custoTotalAnimal(animal);
+}
+function lucroPotencialAnimal(animal) {
+  return valorMercadoAnimal(animal) - custoTotalAnimal(animal);
+}
+function percentualValorizacaoAnimal(animal) {
+  const custo = custoTotalAnimal(animal);
+  if (custo <= 0) return 0;
+  return (lucroPotencialAnimal(animal) / custo) * 100;
+}
+function statusValorizacaoAnimal(animal) {
+  const pct = percentualValorizacaoAnimal(animal);
+  if (pct > 5) return { cor: '🟢', label: 'Valorizando', classe: 'bg-green-100 text-green-700' };
+  if (pct < -5) return { cor: '🔴', label: 'Desvalorizando', classe: 'bg-red-100 text-red-700' };
+  return { cor: '🟡', label: 'Estável', classe: 'bg-amber-100 text-amber-700' };
+}
+
+function totalReceitas(filterFn) {
+  return state.receitas.filter(filterFn || (() => true)).reduce((s, r) => s + num(r.valor), 0);
+}
+function totalDespesas(filterFn) {
+  return state.despesas.filter(filterFn || (() => true)).reduce((s, d) => s + num(d.valorTotal), 0);
+}
+function saldoAtual() {
+  return totalReceitas() - totalDespesas();
+}
+
+function totalInvestidoArena() {
+  return state.despesas.filter(d => d.categoria === 'Arena').reduce((s, d) => s + num(d.valorPago !== undefined && d.valorPago !== '' ? d.valorPago : d.valorTotal), 0);
+}
+function totalPrevistoArena() {
+  return num(state.arenaConfig.valorEstimadoTotal);
+}
+function percentualConclusaoArena() {
+  const prev = totalPrevistoArena();
+  if (prev <= 0) return 0;
+  return Math.min(100, (totalInvestidoArena() / prev) * 100);
+}
+
+function valorTotalAnimais() {
+  return state.animais.filter(a => a.status === 'Ativo' || !a.status).reduce((s, a) => s + valorMercadoAnimal(a), 0);
+}
+function valorTotalVeiculos() {
+  return state.veiculos.reduce((s, v) => s + num(v.valorAtualEstimado), 0);
+}
+function valorTotalEquipamentos() {
+  return state.equipamentos.reduce((s, e) => s + num(e.valorAtualEstimado), 0);
+}
+function valorTotalOutrosBens() {
+  return state.outrosBens.reduce((s, o) => s + num(o.valor), 0);
+}
+function patrimonioTotal() {
+  return valorTotalAnimais() + valorTotalVeiculos() + valorTotalEquipamentos() + totalInvestidoArena() + valorTotalOutrosBens();
+}
+
+function custosDoEvento(eventoId) {
+  return state.despesas.filter(d => d.eventoId === eventoId);
+}
+function totalCustosEvento(eventoId) {
+  return custosDoEvento(eventoId).reduce((s, d) => s + num(d.valorTotal), 0);
+}
+function receitaEvento(evento) {
+  return num(evento.valorCache);
+}
+function lucroEvento(evento) {
+  return receitaEvento(evento) - totalCustosEvento(evento.id);
+}
+
+/* =========================================================================
+   CRUD GENÉRICO DE DESPESAS (usado por Animais, Financeiro, Eventos e Arena
+   — um único lançamento alimenta automaticamente todas as visões,
+   evitando duplicidade, conforme o princípio do sistema)
+   ========================================================================= */
+async function salvarDespesa(dados, idExistente) {
+  dados.usuarioId = state.user.uid;
+  dados.usuarioNome = state.usuarioNome;
+  dados.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+  if (idExistente) {
+    await db.collection('despesas').doc(idExistente).update(dados);
+  } else {
+    dados.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+    await db.collection('despesas').add(dados);
+  }
+}
+async function excluirDespesa(id) {
+  if (!confirm('Excluir este lançamento? Essa ação não pode ser desfeita.')) return;
+  await db.collection('despesas').doc(id).delete();
+  toast('Lançamento excluído.');
+}
+
+function abrirFormDespesa(contexto, vinculoId, despesaExistente) {
+  const isEdit = !!despesaExistente;
+  const d = despesaExistente || {};
+  let categorias;
+  if (contexto === 'animal') categorias = CATEGORIAS_DESPESA_ANIMAL;
+  else if (contexto === 'evento') categorias = ['Transporte','Combustível','Hospedagem','Alimentação','Funcionários','Taxas','Equipamentos','Outros'];
+  else if (contexto === 'arena') categorias = CATEGORIAS_ARENA;
+  else categorias = CATEGORIAS_DESPESA_GERAL;
+
+  const animalOptions = state.animais.map(a => `<option value="${a.id}" ${d.animalId===a.id?'selected':''}>${escapeHtml(a.nome)}</option>`).join('');
+
+  const html = `
+    <form id="formDespesa" class="space-y-3">
+      <div>
+        <label class="label-field">Data</label>
+        <input type="date" name="data" class="input-field" value="${d.data || hoje()}" required />
+      </div>
+      <div>
+        <label class="label-field">Categoria</label>
+        <select name="categoria" id="despCategoria" class="input-field" onchange="atualizarCamposExtrasDespesa()" required>
+          ${categorias.map(c => `<option value="${c}" ${(contexto==='arena'?d.arenaCategoria:d.categoria)===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      ${contexto === 'geral' ? `
+      <div>
+        <label class="label-field">Animal relacionado (opcional)</label>
+        <select name="animalId" class="input-field"><option value="">Nenhum</option>${animalOptions}</select>
+      </div>` : ''}
+      <div>
+        <label class="label-field">Descrição</label>
+        <input type="text" name="descricao" class="input-field" value="${escapeHtml(d.descricao||'')}" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label-field">Produto/Serviço</label>
+          <input type="text" name="produtoServico" class="input-field" value="${escapeHtml(d.produtoServico||'')}" />
+        </div>
+        <div>
+          <label class="label-field">Fornecedor</label>
+          <input type="text" name="fornecedor" class="input-field" value="${escapeHtml(d.fornecedor||'')}" />
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="label-field">Quantidade</label>
+          <input type="number" step="0.01" name="quantidade" id="despQtd" class="input-field" value="${d.quantidade||''}" oninput="calcularValorTotalDespesa()" />
+        </div>
+        <div>
+          <label class="label-field">Unidade</label>
+          <input type="text" name="unidade" class="input-field" value="${escapeHtml(d.unidade||'')}" placeholder="kg, un..." />
+        </div>
+        <div>
+          <label class="label-field">Vl. unitário</label>
+          <input type="number" step="0.01" name="valorUnitario" id="despUnit" class="input-field" value="${d.valorUnitario||''}" oninput="calcularValorTotalDespesa()" />
+        </div>
+      </div>
+      <div id="arenaExtraFields" class="grid grid-cols-2 gap-3 ${contexto==='arena'?'':'hidden'}">
+        <div>
+          <label class="label-field">Valor previsto</label>
+          <input type="number" step="0.01" name="valorPrevisto" class="input-field" value="${d.valorPrevisto||''}" />
+        </div>
+        <div>
+          <label class="label-field">Status</label>
+          <select name="statusArena" class="input-field">
+            <option ${d.statusArena==='Previsto'?'selected':''}>Previsto</option>
+            <option ${d.statusArena==='Pago'?'selected':''}>Pago</option>
+          </select>
+        </div>
+      </div>
+      <div id="vacinaExtraFields" class="grid grid-cols-2 gap-3 hidden">
+        <div><label class="label-field">Fabricante</label><input type="text" name="fabricante" class="input-field" value="${escapeHtml(d.fabricante||'')}" /></div>
+        <div><label class="label-field">Lote</label><input type="text" name="lote" class="input-field" value="${escapeHtml(d.lote||'')}" /></div>
+        <div class="col-span-2"><label class="label-field">Próxima aplicação</label><input type="date" name="proximaAplicacao" class="input-field" value="${d.proximaAplicacao||''}" /></div>
+      </div>
+      <div id="medExtraFields" class="grid grid-cols-2 gap-3 hidden">
+        <div><label class="label-field">Motivo</label><input type="text" name="motivo" class="input-field" value="${escapeHtml(d.motivo||'')}" /></div>
+        <div><label class="label-field">Veterinário/Responsável</label><input type="text" name="veterinarioResponsavel" class="input-field" value="${escapeHtml(d.veterinarioResponsavel||'')}" /></div>
+      </div>
+      <div>
+        <label class="label-field">Valor total (R$)</label>
+        <input type="number" step="0.01" name="valorTotal" id="despTotal" class="input-field font-bold" value="${d.valorTotal||''}" required />
+      </div>
+      <div>
+        <label class="label-field">Observação</label>
+        <textarea name="observacao" class="input-field" rows="2">${escapeHtml(d.observacao||'')}</textarea>
+      </div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirDespesa('${despesaExistente.id}');closeModal();">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit ? 'Salvar alterações' : 'Adicionar despesa'}</button>
+      </div>
+    </form>
+  `;
+  openModal(isEdit ? 'Editar lançamento' : 'Adicionar despesa', html);
+  setTimeout(atualizarCamposExtrasDespesa, 0);
+
+  document.getElementById('formDespesa').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const dados = Object.fromEntries(fd.entries());
+    dados.quantidade = dados.quantidade ? num(dados.quantidade) : null;
+    dados.valorUnitario = dados.valorUnitario ? num(dados.valorUnitario) : null;
+    dados.valorTotal = num(dados.valorTotal);
+    if (dados.valorPrevisto !== undefined) dados.valorPrevisto = dados.valorPrevisto ? num(dados.valorPrevisto) : null;
+    if (contexto === 'animal') dados.animalId = vinculoId;
+    if (contexto === 'evento') dados.eventoId = vinculoId;
+    if (contexto === 'arena') {
+      dados.arenaCategoria = dados.categoria;
+      dados.categoria = 'Arena';
+      dados.valorPago = dados.statusArena === 'Pago' ? dados.valorTotal : 0;
+    } else {
+      delete dados.statusArena;
+      delete dados.valorPrevisto;
+    }
+    if (!dados.animalId) dados.animalId = null;
+    if (!dados.eventoId) dados.eventoId = null;
+    try {
+      await salvarDespesa(dados, isEdit ? despesaExistente.id : null);
+      toast('Lançamento salvo com sucesso.');
+      closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+function calcularValorTotalDespesa() {
+  const qtd = num(document.getElementById('despQtd').value);
+  const unit = num(document.getElementById('despUnit').value);
+  if (qtd && unit) document.getElementById('despTotal').value = (qtd * unit).toFixed(2);
+}
+function atualizarCamposExtrasDespesa() {
+  const cat = document.getElementById('despCategoria').value;
+  const vacina = document.getElementById('vacinaExtraFields');
+  const med = document.getElementById('medExtraFields');
+  if (vacina) vacina.classList.toggle('hidden', cat !== 'Vacina');
+  if (med) med.classList.toggle('hidden', !['Medicamento','Veterinário','Tratamento'].includes(cat));
+}
+
+/* PLACEHOLDER_CALCULOS */
+/* =========================================================================
+   DASHBOARD
+   ========================================================================= */
+function renderDashboard() {
+  const ym = hoje().slice(0,7);
+  const receitasMes = totalReceitas(r => mesAno(r.data) === ym);
+  const despesasMes = totalDespesas(d => mesAno(d.data) === ym);
+  const custoAcumuladoAnimais = state.animais.reduce((s,a) => s + custoTotalAnimal(a), 0);
+  const valorPesoTotal = state.animais.reduce((s,a) => s + valorPesoAnimal(a), 0);
+  const valorMercadoTotal = state.animais.reduce((s,a) => s + valorMercadoAnimal(a), 0);
+  const valorPagoAnimais = state.animais.reduce((s,a) => s + num(a.valorCompra), 0);
+  const valorizacaoTotal = valorMercadoTotal - custoAcumuladoAnimais;
+
+  document.getElementById('section-dashboard').innerHTML = `
+    <div class="space-y-5">
+      <div>
+        <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">📦 PATRIMÔNIO</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-tile col-span-2 bg-amber-700 text-white">
+            <p class="text-xs opacity-80">Patrimônio total</p>
+            <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
+          </div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Animais</p><p class="font-bold">${fmtMoeda(valorTotalAnimais())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Veículos</p><p class="font-bold">${fmtMoeda(valorTotalVeiculos())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Equipamentos</p><p class="font-bold">${fmtMoeda(valorTotalEquipamentos())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Arena (investido)</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+          <div class="stat-tile col-span-2"><p class="text-xs text-zinc-500">Outros bens</p><p class="font-bold">${fmtMoeda(valorTotalOutrosBens())}</p></div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">🐂 ANIMAIS</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Quantidade total</p><p class="font-bold text-lg">${state.animais.length}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Valor pago</p><p class="font-bold">${fmtMoeda(valorPagoAnimais)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Custo acumulado</p><p class="font-bold">${fmtMoeda(custoAcumuladoAnimais)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Valor pelo peso</p><p class="font-bold">${fmtMoeda(valorPesoTotal)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Valor mercado rodeio</p><p class="font-bold">${fmtMoeda(valorMercadoTotal)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Lucro potencial</p><p class="font-bold ${valorizacaoTotal>=0?'text-green-600':'text-red-600'}">${fmtMoeda(valorizacaoTotal)}</p></div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">💰 FINANCEIRO</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-tile col-span-2"><p class="text-xs text-zinc-500">Saldo atual</p><p class="font-bold text-lg ${saldoAtual()>=0?'text-green-600':'text-red-600'}">${fmtMoeda(saldoAtual())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Receitas do mês</p><p class="font-bold text-green-600">${fmtMoeda(receitasMes)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Despesas do mês</p><p class="font-bold text-red-600">${fmtMoeda(despesasMes)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Resultado do mês</p><p class="font-bold ${(receitasMes-despesasMes)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(receitasMes-despesasMes)}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Receitas acumuladas</p><p class="font-bold">${fmtMoeda(totalReceitas())}</p></div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="font-bold text-sm text-zinc-500 mb-2 flex items-center gap-1">🏟️ ARENA</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Total previsto</p><p class="font-bold">${fmtMoeda(totalPrevistoArena())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Total investido</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+          <div class="stat-tile"><p class="text-xs text-zinc-500">Restante</p><p class="font-bold">${fmtMoeda(Math.max(0,totalPrevistoArena()-totalInvestidoArena()))}</p></div>
+          <div class="stat-tile">
+            <p class="text-xs text-zinc-500">Conclusão</p>
+            <p class="font-bold">${percentualConclusaoArena().toFixed(0)}%</p>
+            <div class="w-full bg-zinc-100 rounded-full h-1.5 mt-1"><div class="bg-amber-600 h-1.5 rounded-full" style="width:${percentualConclusaoArena()}%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+/* PLACEHOLDER_DASHBOARD */
+/* =========================================================================
+   MÓDULO ANIMAIS
+   ========================================================================= */
+function renderAnimaisList() {
+  const ativos = state.animais.slice().sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+  document.getElementById('section-animais').innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-lg">🐂 Animais <span class="text-zinc-400 text-sm font-normal">(${ativos.length})</span></h2>
+      <div class="flex gap-2">
+        <button onclick="abrirFormFrete()" class="btn-secondary text-xs">🚚 Frete</button>
+        <button onclick="abrirFormAnimal()" class="btn-primary text-xs">+ Novo animal</button>
+      </div>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      ${ativos.length ? ativos.map(cardAnimalHtml).join('') : '<p class="text-zinc-400 text-sm col-span-2 text-center py-10">Nenhum animal cadastrado ainda.</p>'}
+    </div>
+  `;
+}
+
+function cardAnimalHtml(a) {
+  const custo = custoTotalAnimal(a);
+  const lucro = lucroPotencialAnimal(a);
+  const st = statusValorizacaoAnimal(a);
+  const statusBadge = { Ativo:'bg-green-100 text-green-700', Vendido:'bg-blue-100 text-blue-700', Aposentado:'bg-zinc-200 text-zinc-600', Falecido:'bg-red-100 text-red-700', Outro:'bg-zinc-200 text-zinc-600' }[a.status] || 'bg-zinc-100 text-zinc-500';
+  return `
+    <div class="card p-4 cursor-pointer" onclick="abrirFichaAnimal('${a.id}')">
+      <div class="flex items-start gap-3">
+        <div class="w-14 h-14 rounded-xl bg-zinc-100 flex items-center justify-center text-2xl overflow-hidden shrink-0">
+          ${a.fotoBase64 ? `<img src="${a.fotoBase64}" class="w-full h-full object-cover" />` : '🐂'}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <p class="font-bold truncate">${escapeHtml(a.nome || 'Sem nome')}</p>
+            <span class="badge ${statusBadge} shrink-0">${a.status||'Ativo'}</span>
+          </div>
+          <p class="text-xs text-zinc-400">${escapeHtml(a.numeroBrinco||'—')} ${a.raca?'· '+escapeHtml(a.raca):''}</p>
+          <div class="grid grid-cols-2 gap-x-3 mt-2 text-xs">
+            <p class="text-zinc-500">Compra: <span class="font-semibold text-zinc-700">${fmtMoeda(a.valorCompra)}</span></p>
+            <p class="text-zinc-500">Custo: <span class="font-semibold text-zinc-700">${fmtMoeda(custo)}</span></p>
+            <p class="text-zinc-500">Mercado: <span class="font-semibold text-zinc-700">${fmtMoeda(valorMercadoAnimal(a))}</span></p>
+            <p class="text-zinc-500">Lucro: <span class="font-semibold ${lucro>=0?'text-green-600':'text-red-600'}">${fmtMoeda(lucro)}</span></p>
+          </div>
+          <p class="text-xs mt-1.5">${st.cor} <span class="font-semibold">${st.label}</span></p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function abrirFichaAnimal(id) {
+  state.currentAnimalId = id;
+  showSection('animal-ficha');
+}
+
+function renderAnimalFicha(id) {
+  const a = state.animais.find(x => x.id === id);
+  if (!a) { document.getElementById('section-animal-ficha').innerHTML = '<p class="text-zinc-400 text-center py-10">Animal não encontrado.</p>'; return; }
+  const custo = custoTotalAnimal(a);
+  const valorPeso = valorPesoAnimal(a);
+  const valorMercado = valorMercadoAnimal(a);
+  const valorizPeso = valorizacaoPesoAnimal(a);
+  const lucro = lucroPotencialAnimal(a);
+  const pct = percentualValorizacaoAnimal(a);
+  const despesas = despesasDoAnimal(a.id).slice().sort((x,y) => (y.data||'').localeCompare(x.data||''));
+
+  const timeline = [
+    { data: a.dataCompra, tipo: 'Compra', desc: 'Animal comprado', valor: a.valorCompra },
+    ...despesas.map(d => ({ data: d.data, tipo: d.categoria, desc: d.descricao || d.categoria, valor: d.valorTotal })),
+    ...(a.atualizacoesMercado||[]).map(u => ({ data: u.data, tipo: 'Mercado', desc: 'Valor de mercado atualizado', valor: u.valor, isUpdate: true }))
+  ].filter(t => t.data).sort((x,y) => (y.data||'').localeCompare(x.data||''));
+
+  document.getElementById('section-animal-ficha').innerHTML = `
+    <button onclick="showSection('animais')" class="text-sm text-zinc-500 mb-3 font-semibold">&larr; Voltar</button>
+    <div class="card p-4 mb-4">
+      <div class="flex items-start gap-3">
+        <div class="w-16 h-16 rounded-xl bg-zinc-100 flex items-center justify-center text-3xl overflow-hidden shrink-0">
+          ${a.fotoBase64 ? `<img src="${a.fotoBase64}" class="w-full h-full object-cover" />` : '🐂'}
+        </div>
+        <div class="flex-1">
+          <div class="flex justify-between items-start">
+            <div>
+              <h2 class="font-bold text-lg">${escapeHtml(a.nome||'Sem nome')}</h2>
+              <p class="text-xs text-zinc-400">Brinco ${escapeHtml(a.numeroBrinco||'—')} · ${escapeHtml(a.raca||'—')} · ${escapeHtml(a.sexo||'—')}</p>
+            </div>
+            <button onclick="abrirFormAnimal(${JSON.stringify(a).replace(/"/g,'&quot;')})" class="text-xs font-semibold text-amber-700">Editar</button>
+          </div>
+          <p class="text-xs text-zinc-400 mt-1">Peso atual: ${a.pesoAtual||'—'} kg (${fmtData(a.dataUltimaPesagem)}) · Compra: ${fmtData(a.dataCompra)}</p>
+        </div>
+      </div>
+      ${a.observacoes ? `<p class="text-xs text-zinc-500 mt-2 border-t pt-2">${escapeHtml(a.observacoes)}</p>` : ''}
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="stat-tile"><p class="text-xs text-zinc-500">Valor de compra</p><p class="font-bold">${fmtMoeda(a.valorCompra)}</p></div>
+      <div class="stat-tile"><p class="text-xs text-zinc-500">Custo total</p><p class="font-bold">${fmtMoeda(custo)}</p></div>
+    </div>
+
+    <div class="card p-4 mb-4">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="font-bold text-sm">⚖️ Valor pelo peso</h3>
+        <button onclick="abrirFormPeso('${a.id}')" class="text-xs font-semibold text-amber-700">Atualizar</button>
+      </div>
+      <p class="text-xs text-zinc-500">Arrobas: <b>${a.arrobas||0}</b> × Cotação: <b>${fmtMoeda(a.cotacaoArroba)}</b></p>
+      <p class="font-bold text-lg mt-1">${fmtMoeda(valorPeso)}</p>
+      <p class="text-xs mt-1 ${valorizPeso>=0?'text-green-600':'text-red-600'}">Resultado pelo peso: ${fmtMoeda(valorizPeso)}</p>
+    </div>
+
+    <div class="card p-4 mb-4">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="font-bold text-sm">🏆 Valor de mercado (boi de rodeio)</h3>
+        <button onclick="abrirFormMercado('${a.id}')" class="text-xs font-semibold text-amber-700">Atualizar</button>
+      </div>
+      <p class="font-bold text-lg">${fmtMoeda(valorMercado)}</p>
+      <p class="text-xs mt-1 ${lucro>=0?'text-green-600':'text-red-600'}">Lucro potencial: ${fmtMoeda(lucro)} (${pct.toFixed(1)}%)</p>
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">DESPESAS (${despesas.length})</h3>
+      <button onclick="abrirFormDespesa('animal','${a.id}')" class="btn-primary text-xs">+ Adicionar despesa</button>
+    </div>
+    <div class="space-y-2 mb-4">
+      ${despesas.length ? despesas.map(d => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("animal","${a.id}",${JSON.stringify(d).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')}</p>
+          </div>
+          <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhuma despesa registrada.</p>'}
+    </div>
+
+    <h3 class="font-bold text-sm text-zinc-500 mb-2">HISTÓRICO</h3>
+    <div class="space-y-2">
+      ${timeline.length ? timeline.map(t => `
+        <div class="flex gap-3 text-sm">
+          <p class="text-zinc-400 text-xs w-20 shrink-0 pt-0.5">${fmtData(t.data)}</p>
+          <div class="flex-1 border-l-2 border-zinc-200 pl-3 pb-2">
+            <p><span class="font-semibold">${escapeHtml(t.tipo)}</span> — ${escapeHtml(t.desc)}</p>
+            <p class="text-xs text-zinc-400">${fmtMoeda(t.valor)}</p>
+          </div>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Sem eventos registrados.</p>'}
+    </div>
+  `;
+}
+
+function abrirFormPeso(animalId) {
+  const a = state.animais.find(x => x.id === animalId);
+  openModal('Atualizar valor pelo peso', `
+    <form id="formPeso" class="space-y-3">
+      <div><label class="label-field">Peso atual (kg)</label><input type="number" step="0.1" name="pesoAtual" class="input-field" value="${a.pesoAtual||''}" /></div>
+      <div><label class="label-field">Data da pesagem</label><input type="date" name="dataUltimaPesagem" class="input-field" value="${a.dataUltimaPesagem||hoje()}" /></div>
+      <div><label class="label-field">Quantidade de arrobas</label><input type="number" step="0.01" name="arrobas" class="input-field" value="${a.arrobas||''}" /></div>
+      <div><label class="label-field">Cotação da arroba (R$)</label><input type="number" step="0.01" name="cotacaoArroba" class="input-field" value="${a.cotacaoArroba||''}" /></div>
+      <button type="submit" class="btn-primary w-full">Salvar</button>
+    </form>
+  `);
+  document.getElementById('formPeso').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.pesoAtual = num(fd.pesoAtual); fd.arrobas = num(fd.arrobas); fd.cotacaoArroba = num(fd.cotacaoArroba);
+    await db.collection('animais').doc(animalId).update(fd);
+    toast('Valor pelo peso atualizado.'); closeModal();
+  });
+}
+
+function abrirFormMercado(animalId) {
+  const a = state.animais.find(x => x.id === animalId);
+  openModal('Atualizar valor de mercado de rodeio', `
+    <form id="formMercado" class="space-y-3">
+      <div><label class="label-field">Valor estimado no mercado de rodeio (R$)</label><input type="number" step="0.01" name="valorMercadoRodeio" class="input-field" value="${a.valorMercadoRodeio||''}" required /></div>
+      <p class="text-xs text-zinc-400">Esse valor é informado manualmente pelos sócios e representa o valor comercial do animal como boi de rodeio.</p>
+      <button type="submit" class="btn-primary w-full">Salvar</button>
+    </form>
+  `);
+  document.getElementById('formMercado').addEventListener('submit', async e => {
+    e.preventDefault();
+    const valor = num(new FormData(e.target).get('valorMercadoRodeio'));
+    const atualizacoes = (a.atualizacoesMercado || []).concat([{ data: hoje(), valor }]);
+    await db.collection('animais').doc(animalId).update({ valorMercadoRodeio: valor, atualizacoesMercado: atualizacoes });
+    toast('Valor de mercado atualizado.'); closeModal();
+  });
+}
+
+function abrirFormAnimal(animal) {
+  const a = animal || {};
+  const isEdit = !!a.id;
+  const html = `
+    <form id="formAnimal" class="space-y-3">
+      <div class="flex items-center gap-3">
+        <div id="fotoPreview" class="w-16 h-16 rounded-xl bg-zinc-100 flex items-center justify-center text-2xl overflow-hidden shrink-0">
+          ${a.fotoBase64 ? `<img src="${a.fotoBase64}" class="w-full h-full object-cover" />` : '🐂'}
+        </div>
+        <div class="flex-1">
+          <label class="label-field">Foto do animal</label>
+          <input type="file" accept="image/*" onchange="handleFotoAnimal(event)" class="text-xs" />
+        </div>
+      </div>
+      <input type="hidden" name="fotoBase64" id="fotoBase64Input" value="${a.fotoBase64||''}" />
+      <div class="grid grid-cols-2 gap-3">
+        <div class="col-span-2"><label class="label-field">Nome do animal</label><input type="text" name="nome" class="input-field" value="${escapeHtml(a.nome||'')}" required /></div>
+        <div><label class="label-field">Número/Brinco</label><input type="text" name="numeroBrinco" class="input-field" value="${escapeHtml(a.numeroBrinco||'')}" /></div>
+        <div><label class="label-field">Raça</label><input type="text" name="raca" class="input-field" value="${escapeHtml(a.raca||'')}" /></div>
+        <div>
+          <label class="label-field">Sexo</label>
+          <select name="sexo" class="input-field"><option ${a.sexo==='Macho'?'selected':''}>Macho</option><option ${a.sexo==='Fêmea'?'selected':''}>Fêmea</option></select>
+        </div>
+        <div>
+          <label class="label-field">Status</label>
+          <select name="status" class="input-field">${STATUS_ANIMAL.map(s=>`<option ${a.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        </div>
+        <div><label class="label-field">Data de nascimento</label><input type="date" name="dataNascimento" class="input-field" value="${a.dataNascimento||''}" /></div>
+        <div><label class="label-field">Peso atual (kg)</label><input type="number" step="0.1" name="pesoAtual" class="input-field" value="${a.pesoAtual||''}" /></div>
+        <div><label class="label-field">Data de compra</label><input type="date" name="dataCompra" class="input-field" value="${a.dataCompra||hoje()}" /></div>
+        <div><label class="label-field">Valor pago na compra (R$)</label><input type="number" step="0.01" name="valorCompra" class="input-field" value="${a.valorCompra||''}" /></div>
+        <div class="col-span-2"><label class="label-field">Local/origem da compra</label><input type="text" name="localOrigem" class="input-field" value="${escapeHtml(a.localOrigem||'')}" /></div>
+        <div class="col-span-2"><label class="label-field">Observações</label><textarea name="observacoes" class="input-field" rows="2">${escapeHtml(a.observacoes||'')}</textarea></div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirAnimal('${a.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit ? 'Salvar alterações' : 'Cadastrar animal'}</button>
+      </div>
+    </form>
+  `;
+  openModal(isEdit ? 'Editar animal' : 'Novo animal', html);
+  document.getElementById('formAnimal').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.pesoAtual = fd.pesoAtual ? num(fd.pesoAtual) : null;
+    fd.valorCompra = num(fd.valorCompra);
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    try {
+      if (isEdit) {
+        fd.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('animais').doc(a.id).update(fd);
+      } else {
+        fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        fd.arrobas = 0; fd.cotacaoArroba = 0; fd.valorMercadoRodeio = 0; fd.atualizacoesMercado = [];
+        await db.collection('animais').add(fd);
+      }
+      toast('Animal salvo com sucesso.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+function handleFotoAnimal(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  resizeImageFile(file, 400, base64 => {
+    document.getElementById('fotoBase64Input').value = base64;
+    document.getElementById('fotoPreview').innerHTML = `<img src="${base64}" class="w-full h-full object-cover" />`;
+  });
+}
+async function excluirAnimal(id) {
+  if (!confirm('Excluir este animal e todo o seu histórico de despesas? Essa ação não pode ser desfeita.')) return;
+  const batch = db.batch();
+  batch.delete(db.collection('animais').doc(id));
+  despesasDoAnimal(id).forEach(d => batch.delete(db.collection('despesas').doc(d.id)));
+  await batch.commit();
+  toast('Animal excluído.'); closeModal(); showSection('animais');
+}
+
+/* ---- Fretes (podem ser divididos entre vários animais) ---- */
+function abrirFormFrete() {
+  const animalCheckboxes = state.animais.map(a => `
+    <label class="flex items-center gap-2 text-sm py-1">
+      <input type="checkbox" name="animaisIds" value="${a.id}" class="rounded" /> ${escapeHtml(a.nome)}
+    </label>
+  `).join('');
+  openModal('Registrar frete', `
+    <form id="formFrete" class="space-y-3">
+      <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${hoje()}" required /></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Origem</label><input type="text" name="origem" class="input-field" /></div>
+        <div><label class="label-field">Destino</label><input type="text" name="destino" class="input-field" /></div>
+      </div>
+      <div><label class="label-field">Motorista/Transportador</label><input type="text" name="motorista" class="input-field" /></div>
+      <div><label class="label-field">Valor total do frete (R$)</label><input type="number" step="0.01" name="valorTotal" class="input-field" required /></div>
+      <div>
+        <label class="label-field">Animais transportados (o valor será dividido igualmente)</label>
+        <div class="max-h-32 overflow-y-auto border rounded-lg px-2">${animalCheckboxes || '<p class="text-xs text-zinc-400 py-2">Nenhum animal cadastrado.</p>'}</div>
+      </div>
+      <div><label class="label-field">Observação</label><textarea name="observacao" class="input-field" rows="2"></textarea></div>
+      <button type="submit" class="btn-primary w-full">Registrar frete</button>
+    </form>
+  `);
+  document.getElementById('formFrete').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const animaisIds = fd.getAll('animaisIds');
+    const valorTotal = num(fd.get('valorTotal'));
+    const freteDados = {
+      data: fd.get('data'), origem: fd.get('origem'), destino: fd.get('destino'),
+      motorista: fd.get('motorista'), valorTotal, observacao: fd.get('observacao'),
+      animaisIds, usuarioId: state.user.uid, usuarioNome: state.usuarioNome,
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try {
+      const freteRef = await db.collection('fretes').add(freteDados);
+      const batch = db.batch();
+      if (animaisIds.length) {
+        const valorPorAnimal = valorTotal / animaisIds.length;
+        animaisIds.forEach(animalId => {
+          const ref = db.collection('despesas').doc();
+          batch.set(ref, {
+            data: freteDados.data, categoria: 'Frete', animalId, eventoId: null,
+            descricao: `Frete: ${freteDados.origem||'?'} → ${freteDados.destino||'?'}`,
+            valorTotal: valorPorAnimal, freteId: freteRef.id,
+            usuarioId: state.user.uid, usuarioNome: state.usuarioNome,
+            criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+      } else {
+        const ref = db.collection('despesas').doc();
+        batch.set(ref, {
+          data: freteDados.data, categoria: 'Transporte', animalId: null, eventoId: null,
+          descricao: `Frete: ${freteDados.origem||'?'} → ${freteDados.destino||'?'}`,
+          valorTotal, freteId: freteRef.id,
+          usuarioId: state.user.uid, usuarioNome: state.usuarioNome,
+          criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      await batch.commit();
+      toast('Frete registrado e custo dividido automaticamente.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao registrar frete: ' + err.message, true); }
+  });
+}
+/* PLACEHOLDER_ANIMAIS */
+/* =========================================================================
+   MÓDULO FINANCEIRO
+   ========================================================================= */
+function renderFinanceiro() {
+  const receitas = state.receitas.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  const despesas = state.despesas.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  document.getElementById('section-financeiro').innerHTML = `
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Receitas</p><p class="font-bold text-green-600 text-sm">${fmtMoeda(totalReceitas())}</p></div>
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Despesas</p><p class="font-bold text-red-600 text-sm">${fmtMoeda(totalDespesas())}</p></div>
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Saldo</p><p class="font-bold text-sm ${saldoAtual()>=0?'text-green-600':'text-red-600'}">${fmtMoeda(saldoAtual())}</p></div>
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">RECEITAS</h3>
+      <button onclick="abrirFormReceita()" class="btn-primary text-xs">+ Receita</button>
+    </div>
+    <div class="space-y-2 mb-5">
+      ${receitas.length ? receitas.map(r => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormReceita(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${escapeHtml(r.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(r.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(r.descricao||'')}</p>
+          </div>
+          <p class="font-bold text-sm text-green-600">${fmtMoeda(r.valor)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhuma receita registrada.</p>'}
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">DESPESAS GERAIS</h3>
+      <button onclick="abrirFormDespesa('geral')" class="btn-primary text-xs">+ Despesa</button>
+    </div>
+    <div class="space-y-2">
+      ${despesas.length ? despesas.map(d => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("geral", null, ${JSON.stringify(d).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')} ${d.animalId ? '🐂' : ''}${d.eventoId ? '🏆' : ''}</p>
+          </div>
+          <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhuma despesa registrada.</p>'}
+    </div>
+  `;
+}
+
+async function salvarReceita(dados, idExistente) {
+  dados.usuarioId = state.user.uid; dados.usuarioNome = state.usuarioNome;
+  if (idExistente) await db.collection('receitas').doc(idExistente).update(dados);
+  else { dados.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('receitas').add(dados); }
+}
+async function excluirReceita(id) {
+  if (!confirm('Excluir esta receita?')) return;
+  await db.collection('receitas').doc(id).delete();
+  toast('Receita excluída.'); closeModal();
+}
+function abrirFormReceita(receitaExistente) {
+  const isEdit = !!receitaExistente;
+  const r = receitaExistente || {};
+  const eventoOptions = state.eventos.map(e => `<option value="${e.id}" ${r.eventoId===e.id?'selected':''}>${escapeHtml(e.nome)}</option>`).join('');
+  openModal(isEdit ? 'Editar receita' : 'Nova receita', `
+    <form id="formReceita" class="space-y-3">
+      <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${r.data||hoje()}" required /></div>
+      <div>
+        <label class="label-field">Categoria</label>
+        <select name="categoria" class="input-field">${CATEGORIAS_RECEITA.map(c=>`<option ${r.categoria===c?'selected':''}>${c}</option>`).join('')}</select>
+      </div>
+      <div><label class="label-field">Descrição</label><input type="text" name="descricao" class="input-field" value="${escapeHtml(r.descricao||'')}" /></div>
+      <div><label class="label-field">Valor (R$)</label><input type="number" step="0.01" name="valor" class="input-field" value="${r.valor||''}" required /></div>
+      <div><label class="label-field">Evento relacionado (opcional)</label><select name="eventoId" class="input-field"><option value="">Nenhum</option>${eventoOptions}</select></div>
+      <div><label class="label-field">Observação</label><textarea name="observacao" class="input-field" rows="2">${escapeHtml(r.observacao||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirReceita('${r.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit?'Salvar alterações':'Adicionar receita'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formReceita').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valor = num(fd.valor); if (!fd.eventoId) fd.eventoId = null;
+    try { await salvarReceita(fd, isEdit ? r.id : null); toast('Receita salva.'); closeModal(); }
+    catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+/* PLACEHOLDER_FINANCEIRO */
+/* =========================================================================
+   MÓDULO EVENTOS
+   ========================================================================= */
+function renderEventosList() {
+  const eventos = state.eventos.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  const statusBadge = { Planejado:'bg-zinc-200 text-zinc-600', Confirmado:'bg-blue-100 text-blue-700', Realizado:'bg-green-100 text-green-700', Cancelado:'bg-red-100 text-red-700' };
+  document.getElementById('section-eventos').innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-lg">🏆 Eventos</h2>
+      <button onclick="abrirFormEvento()" class="btn-primary text-xs">+ Novo evento</button>
+    </div>
+    <div class="space-y-2">
+      ${eventos.length ? eventos.map(ev => {
+        const lucro = lucroEvento(ev);
+        return `
+        <div class="card p-4 cursor-pointer" onclick="abrirEventoDetalhe('${ev.id}')">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="font-bold">${escapeHtml(ev.nome)}</p>
+              <p class="text-xs text-zinc-400">${fmtData(ev.data)} · ${escapeHtml(ev.local||'—')}</p>
+            </div>
+            <span class="badge ${statusBadge[ev.status]||'bg-zinc-100'}">${ev.status||'Planejado'}</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-2 text-xs">
+            <p class="text-zinc-500">Cachê: <span class="font-semibold text-zinc-700">${fmtMoeda(receitaEvento(ev))}</span></p>
+            <p class="text-zinc-500">Custos: <span class="font-semibold text-zinc-700">${fmtMoeda(totalCustosEvento(ev.id))}</span></p>
+            <p class="text-zinc-500">Lucro: <span class="font-semibold ${lucro>=0?'text-green-600':'text-red-600'}">${fmtMoeda(lucro)}</span></p>
+          </div>
+        </div>`;
+      }).join('') : '<p class="text-zinc-400 text-sm text-center py-10">Nenhum evento cadastrado ainda.</p>'}
+    </div>
+  `;
+}
+
+function abrirEventoDetalhe(id) { state.currentEventoId = id; showSection('evento-detalhe'); }
+
+function renderEventoDetalhe(id) {
+  const ev = state.eventos.find(x => x.id === id);
+  if (!ev) { document.getElementById('section-evento-detalhe').innerHTML = '<p class="text-zinc-400 text-center py-10">Evento não encontrado.</p>'; return; }
+  const custos = custosDoEvento(ev.id).slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  document.getElementById('section-evento-detalhe').innerHTML = `
+    <button onclick="showSection('eventos')" class="text-sm text-zinc-500 mb-3 font-semibold">&larr; Voltar</button>
+    <div class="card p-4 mb-4">
+      <div class="flex justify-between items-start">
+        <div>
+          <h2 class="font-bold text-lg">${escapeHtml(ev.nome)}</h2>
+          <p class="text-xs text-zinc-400">${fmtData(ev.data)} · ${escapeHtml(ev.local||'—')} · ${escapeHtml(ev.contratante||'—')}</p>
+        </div>
+        <button onclick='abrirFormEvento(${JSON.stringify(ev).replace(/'/g,"&#39;")})' class="text-xs font-semibold text-amber-700">Editar</button>
+      </div>
+      ${ev.observacoes ? `<p class="text-xs text-zinc-500 mt-2 border-t pt-2">${escapeHtml(ev.observacoes)}</p>` : ''}
+    </div>
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Receita (cachê)</p><p class="font-bold text-sm text-green-600">${fmtMoeda(receitaEvento(ev))}</p></div>
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Custos</p><p class="font-bold text-sm text-red-600">${fmtMoeda(totalCustosEvento(ev.id))}</p></div>
+      <div class="stat-tile"><p class="text-[11px] text-zinc-500">Lucro</p><p class="font-bold text-sm ${lucroEvento(ev)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(lucroEvento(ev))}</p></div>
+    </div>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">CUSTOS DO EVENTO</h3>
+      <button onclick="abrirFormDespesa('evento','${ev.id}')" class="btn-primary text-xs">+ Adicionar custo</button>
+    </div>
+    <div class="space-y-2">
+      ${custos.length ? custos.map(d => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("evento","${ev.id}",${JSON.stringify(d).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${escapeHtml(d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||'')}</p>
+          </div>
+          <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-4">Nenhum custo registrado.</p>'}
+    </div>
+  `;
+}
+
+function abrirFormEvento(eventoExistente) {
+  const isEdit = !!eventoExistente;
+  const ev = eventoExistente || {};
+  openModal(isEdit ? 'Editar evento' : 'Novo evento', `
+    <form id="formEvento" class="space-y-3">
+      <div><label class="label-field">Nome do evento</label><input type="text" name="nome" class="input-field" value="${escapeHtml(ev.nome||'')}" required /></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${ev.data||hoje()}" required /></div>
+        <div><label class="label-field">Local</label><input type="text" name="local" class="input-field" value="${escapeHtml(ev.local||'')}" /></div>
+      </div>
+      <div><label class="label-field">Contratante</label><input type="text" name="contratante" class="input-field" value="${escapeHtml(ev.contratante||'')}" /></div>
+      <div><label class="label-field">Valor do contrato/cachê (R$)</label><input type="number" step="0.01" name="valorCache" class="input-field" value="${ev.valorCache||''}" /></div>
+      <div><label class="label-field">Status</label><select name="status" class="input-field">${STATUS_EVENTO.map(s=>`<option ${ev.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label class="label-field">Observações</label><textarea name="observacoes" class="input-field" rows="2">${escapeHtml(ev.observacoes||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirEvento('${ev.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit?'Salvar alterações':'Cadastrar evento'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formEvento').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valorCache = num(fd.valorCache);
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    try {
+      let eventoId = isEdit ? ev.id : null;
+      if (isEdit) { await db.collection('eventos').doc(ev.id).update(fd); }
+      else { fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); const ref = await db.collection('eventos').add(fd); eventoId = ref.id; }
+      // Mantém uma receita vinculada ao evento sincronizada automaticamente (sem duplicidade de lançamento)
+      const receitaExistente = state.receitas.find(r => r.eventoId === eventoId && r.autoGerada);
+      const receitaDados = { data: fd.data, descricao: fd.nome, categoria: 'Evento', valor: fd.valorCache, eventoId, autoGerada: true, usuarioId: state.user.uid, usuarioNome: state.usuarioNome };
+      if (receitaExistente) await db.collection('receitas').doc(receitaExistente.id).update(receitaDados);
+      else { receitaDados.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('receitas').add(receitaDados); }
+      toast('Evento salvo com sucesso.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+async function excluirEvento(id) {
+  if (!confirm('Excluir este evento, seus custos e a receita vinculada?')) return;
+  const batch = db.batch();
+  batch.delete(db.collection('eventos').doc(id));
+  custosDoEvento(id).forEach(d => batch.delete(db.collection('despesas').doc(d.id)));
+  state.receitas.filter(r => r.eventoId === id).forEach(r => batch.delete(db.collection('receitas').doc(r.id)));
+  await batch.commit();
+  toast('Evento excluído.'); closeModal(); showSection('eventos');
+}
+/* PLACEHOLDER_EVENTOS */
+/* =========================================================================
+   MÓDULO ARENA
+   ========================================================================= */
+function renderArena() {
+  const investimentos = state.despesas.filter(d => d.categoria === 'Arena').slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+  const porCategoria = {};
+  investimentos.forEach(d => { const c = d.arenaCategoria || d.categoria; porCategoria[c] = (porCategoria[c]||0) + num(d.valorTotal); });
+  const cfg = state.arenaConfig;
+  document.getElementById('section-arena').innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-lg">🏟️ Arena</h2>
+      <button onclick="abrirFormArenaConfig()" class="btn-secondary text-xs">Configurar</button>
+    </div>
+    <div class="card p-4 mb-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div><p class="text-xs text-zinc-500">Valor previsto</p><p class="font-bold">${fmtMoeda(totalPrevistoArena())}</p></div>
+        <div><p class="text-xs text-zinc-500">Já investido</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+        <div><p class="text-xs text-zinc-500">Restante</p><p class="font-bold">${fmtMoeda(Math.max(0,totalPrevistoArena()-totalInvestidoArena()))}</p></div>
+        <div><p class="text-xs text-zinc-500">Status</p><p class="font-bold">${cfg.status||'Planejado'}</p></div>
+      </div>
+      <div class="w-full bg-zinc-100 rounded-full h-2 mt-3"><div class="bg-amber-600 h-2 rounded-full" style="width:${percentualConclusaoArena()}%"></div></div>
+      <p class="text-xs text-zinc-400 mt-1">${percentualConclusaoArena().toFixed(1)}% concluído · Início: ${fmtData(cfg.dataInicio)} · Previsão: ${fmtData(cfg.previsaoConclusao)}</p>
+    </div>
+
+    <h3 class="font-bold text-sm text-zinc-500 mb-2">GASTOS POR CATEGORIA</h3>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      ${Object.keys(porCategoria).length ? Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([c,v]) => `
+        <div class="stat-tile"><p class="text-[11px] text-zinc-500">${escapeHtml(c)}</p><p class="font-bold text-sm">${fmtMoeda(v)}</p></div>
+      `).join('') : '<p class="text-zinc-400 text-sm col-span-2 text-center py-2">Nenhum investimento registrado.</p>'}
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">LANÇAMENTOS</h3>
+      <button onclick="abrirFormDespesa('arena')" class="btn-primary text-xs">+ Investimento</button>
+    </div>
+    <div class="space-y-2">
+      ${investimentos.length ? investimentos.map(d => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormDespesa("arena", null, ${JSON.stringify(d).replace(/'/g,"&#39;")})'>
+          <div>
+            <p class="text-sm font-semibold">${escapeHtml(d.arenaCategoria||d.categoria)} <span class="text-zinc-400 font-normal">· ${fmtData(d.data)}</span></p>
+            <p class="text-xs text-zinc-400">${escapeHtml(d.descricao||d.fornecedor||'')}</p>
+          </div>
+          <p class="font-bold text-sm text-red-600">${fmtMoeda(d.valorTotal)}</p>
+        </div>
+      `).join('') : ''}
+    </div>
+  `;
+}
+function abrirFormArenaConfig() {
+  const cfg = state.arenaConfig;
+  openModal('Configurar projeto da Arena', `
+    <form id="formArenaConfig" class="space-y-3">
+      <div><label class="label-field">Valor estimado total (R$)</label><input type="number" step="0.01" name="valorEstimadoTotal" class="input-field" value="${cfg.valorEstimadoTotal||''}" /></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Data de início</label><input type="date" name="dataInicio" class="input-field" value="${cfg.dataInicio||''}" /></div>
+        <div><label class="label-field">Previsão de conclusão</label><input type="date" name="previsaoConclusao" class="input-field" value="${cfg.previsaoConclusao||''}" /></div>
+      </div>
+      <div><label class="label-field">Status</label>
+        <select name="status" class="input-field">${['Planejado','Em andamento','Concluído'].map(s=>`<option ${cfg.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      </div>
+      <button type="submit" class="btn-primary w-full">Salvar</button>
+    </form>
+  `);
+  document.getElementById('formArenaConfig').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valorEstimadoTotal = num(fd.valorEstimadoTotal);
+    await db.collection('config').doc('arena').set(fd, { merge: true });
+    toast('Configuração da arena salva.'); closeModal();
+  });
+}
+/* PLACEHOLDER_ARENA */
+/* =========================================================================
+   MÓDULO PATRIMÔNIO
+   ========================================================================= */
+function renderPatrimonio() {
+  document.getElementById('section-patrimonio').innerHTML = `
+    <div class="stat-tile bg-amber-700 text-white mb-4">
+      <p class="text-xs opacity-80">Patrimônio total</p>
+      <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      <div class="stat-tile"><p class="text-xs text-zinc-500">🐂 Animais</p><p class="font-bold">${fmtMoeda(valorTotalAnimais())}</p></div>
+      <div class="stat-tile"><p class="text-xs text-zinc-500">🏟️ Arena</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">VEÍCULOS (${fmtMoeda(valorTotalVeiculos())})</h3>
+      <button onclick="abrirFormVeiculo()" class="btn-primary text-xs">+ Veículo</button>
+    </div>
+    <div class="space-y-2 mb-5">
+      ${state.veiculos.length ? state.veiculos.map(v => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormVeiculo(${JSON.stringify(v).replace(/'/g,"&#39;")})'>
+          <div><p class="text-sm font-semibold">${escapeHtml(v.veiculo)} <span class="text-zinc-400 font-normal">${escapeHtml(v.modelo||'')} ${v.ano||''}</span></p><p class="text-xs text-zinc-400">Pago: ${fmtMoeda(v.valorPago)}</p></div>
+          <p class="font-bold text-sm">${fmtMoeda(v.valorAtualEstimado)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-3">Nenhum veículo cadastrado.</p>'}
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">EQUIPAMENTOS (${fmtMoeda(valorTotalEquipamentos())})</h3>
+      <button onclick="abrirFormEquipamento()" class="btn-primary text-xs">+ Equipamento</button>
+    </div>
+    <div class="space-y-2 mb-5">
+      ${state.equipamentos.length ? state.equipamentos.map(eq => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormEquipamento(${JSON.stringify(eq).replace(/'/g,"&#39;")})'>
+          <div><p class="text-sm font-semibold">${escapeHtml(eq.equipamento)}</p><p class="text-xs text-zinc-400">Comprado em ${fmtData(eq.dataCompra)} · Pago: ${fmtMoeda(eq.valorPago)}</p></div>
+          <p class="font-bold text-sm">${fmtMoeda(eq.valorAtualEstimado)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-3">Nenhum equipamento cadastrado.</p>'}
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm text-zinc-500">OUTROS BENS (${fmtMoeda(valorTotalOutrosBens())})</h3>
+      <button onclick="abrirFormOutroBem()" class="btn-primary text-xs">+ Bem</button>
+    </div>
+    <div class="space-y-2">
+      ${state.outrosBens.length ? state.outrosBens.map(o => `
+        <div class="card p-3 flex justify-between items-center cursor-pointer" onclick='abrirFormOutroBem(${JSON.stringify(o).replace(/'/g,"&#39;")})'>
+          <div><p class="text-sm font-semibold">${escapeHtml(o.descricao)}</p></div>
+          <p class="font-bold text-sm">${fmtMoeda(o.valor)}</p>
+        </div>
+      `).join('') : '<p class="text-zinc-400 text-sm text-center py-3">Nenhum outro bem cadastrado.</p>'}
+    </div>
+  `;
+}
+
+function abrirFormVeiculo(item) {
+  const v = item || {}; const isEdit = !!v.id;
+  openModal(isEdit ? 'Editar veículo' : 'Novo veículo', `
+    <form id="formVeiculo" class="space-y-3">
+      <div><label class="label-field">Veículo</label><input type="text" name="veiculo" class="input-field" value="${escapeHtml(v.veiculo||'')}" required /></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Modelo</label><input type="text" name="modelo" class="input-field" value="${escapeHtml(v.modelo||'')}" /></div>
+        <div><label class="label-field">Ano</label><input type="number" name="ano" class="input-field" value="${v.ano||''}" /></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Valor pago</label><input type="number" step="0.01" name="valorPago" class="input-field" value="${v.valorPago||''}" /></div>
+        <div><label class="label-field">Valor atual estimado</label><input type="number" step="0.01" name="valorAtualEstimado" class="input-field" value="${v.valorAtualEstimado||''}" /></div>
+      </div>
+      <div><label class="label-field">Observações</label><textarea name="observacoes" class="input-field" rows="2">${escapeHtml(v.observacoes||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirItem('veiculos','${v.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">Salvar</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formVeiculo').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.ano = fd.ano ? num(fd.ano) : null; fd.valorPago = num(fd.valorPago); fd.valorAtualEstimado = num(fd.valorAtualEstimado);
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    if (isEdit) await db.collection('veiculos').doc(v.id).update(fd);
+    else { fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('veiculos').add(fd); }
+    toast('Veículo salvo.'); closeModal();
+  });
+}
+function abrirFormEquipamento(item) {
+  const eq = item || {}; const isEdit = !!eq.id;
+  openModal(isEdit ? 'Editar equipamento' : 'Novo equipamento', `
+    <form id="formEquipamento" class="space-y-3">
+      <div><label class="label-field">Equipamento</label><input type="text" name="equipamento" class="input-field" value="${escapeHtml(eq.equipamento||'')}" required /></div>
+      <div><label class="label-field">Data de compra</label><input type="date" name="dataCompra" class="input-field" value="${eq.dataCompra||''}" /></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Valor pago</label><input type="number" step="0.01" name="valorPago" class="input-field" value="${eq.valorPago||''}" /></div>
+        <div><label class="label-field">Valor atual estimado</label><input type="number" step="0.01" name="valorAtualEstimado" class="input-field" value="${eq.valorAtualEstimado||''}" /></div>
+      </div>
+      <div><label class="label-field">Observação</label><textarea name="observacao" class="input-field" rows="2">${escapeHtml(eq.observacao||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirItem('equipamentos','${eq.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">Salvar</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formEquipamento').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valorPago = num(fd.valorPago); fd.valorAtualEstimado = num(fd.valorAtualEstimado);
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    if (isEdit) await db.collection('equipamentos').doc(eq.id).update(fd);
+    else { fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('equipamentos').add(fd); }
+    toast('Equipamento salvo.'); closeModal();
+  });
+}
+function abrirFormOutroBem(item) {
+  const o = item || {}; const isEdit = !!o.id;
+  openModal(isEdit ? 'Editar bem' : 'Novo bem', `
+    <form id="formOutroBem" class="space-y-3">
+      <div><label class="label-field">Descrição</label><input type="text" name="descricao" class="input-field" value="${escapeHtml(o.descricao||'')}" required /></div>
+      <div><label class="label-field">Valor (R$)</label><input type="number" step="0.01" name="valor" class="input-field" value="${o.valor||''}" /></div>
+      <div><label class="label-field">Observação</label><textarea name="observacao" class="input-field" rows="2">${escapeHtml(o.observacao||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirItem('outrosBens','${o.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">Salvar</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formOutroBem').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valor = num(fd.valor); fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    if (isEdit) await db.collection('outrosBens').doc(o.id).update(fd);
+    else { fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('outrosBens').add(fd); }
+    toast('Bem salvo.'); closeModal();
+  });
+}
+async function excluirItem(colecao, id) {
+  if (!confirm('Excluir este item?')) return;
+  await db.collection(colecao).doc(id).delete();
+  toast('Item excluído.'); closeModal();
+}
+/* PLACEHOLDER_PATRIMONIO */
+/* =========================================================================
+   MÓDULO RELATÓRIOS
+   ========================================================================= */
+state.relatorioFiltro = { tipo: 'animais', ano: new Date().getFullYear().toString(), mes: '' };
+
+function mudarFiltroRelatorio(campo, valor) {
+  state.relatorioFiltro[campo] = valor;
+  renderRelatorios();
+}
+
+function renderRelatorios() {
+  const f = state.relatorioFiltro;
+  const anos = Array.from(new Set(
+    [...state.receitas, ...state.despesas].map(x => (x.data||'').slice(0,4)).filter(Boolean)
+  ));
+  if (!anos.includes(f.ano)) anos.push(f.ano);
+  anos.sort();
+
+  const tipos = [
+    { id: 'animais', label: 'Animais' }, { id: 'financeiro', label: 'Financeiro' },
+    { id: 'eventos', label: 'Eventos' }, { id: 'arena', label: 'Arena' }, { id: 'patrimonial', label: 'Patrimonial' }
+  ];
+
+  document.getElementById('section-relatorios').innerHTML = `
+    <h2 class="font-bold text-lg mb-3">📊 Relatórios</h2>
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-3">
+      ${tipos.map(t => `<button onclick="mudarFiltroRelatorio('tipo','${t.id}')" class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${f.tipo===t.id?'bg-amber-700 text-white':'bg-zinc-100 text-zinc-600'}">${t.label}</button>`).join('')}
+    </div>
+    ${['financeiro','eventos'].includes(f.tipo) ? `
+    <div class="flex gap-2 mb-4">
+      <select class="input-field" onchange="mudarFiltroRelatorio('ano', this.value)">${anos.map(a=>`<option value="${a}" ${f.ano===a?'selected':''}>${a}</option>`).join('')}</select>
+      <select class="input-field" onchange="mudarFiltroRelatorio('mes', this.value)">
+        <option value="">Ano todo</option>
+        ${['01','02','03','04','05','06','07','08','09','10','11','12'].map((m,i)=>`<option value="${m}" ${f.mes===m?'selected':''}>${(i+1).toString().padStart(2,'0')} - ${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][i]}</option>`).join('')}
+      </select>
+    </div>` : ''}
+    <div id="relatorioConteudo"></div>
+  `;
+  renderConteudoRelatorio();
+}
+
+function renderConteudoRelatorio() {
+  const f = state.relatorioFiltro;
+  const el = document.getElementById('relatorioConteudo');
+  const periodoMatch = dataStr => {
+    if (!dataStr) return false;
+    if (dataStr.slice(0,4) !== f.ano) return false;
+    if (f.mes && dataStr.slice(5,7) !== f.mes) return false;
+    return true;
+  };
+
+  if (f.tipo === 'animais') {
+    const linhas = state.animais.map(a => `
+      <tr class="border-b border-zinc-100">
+        <td class="py-2 pr-2 font-semibold">${escapeHtml(a.nome)}</td>
+        <td class="py-2 pr-2">${fmtMoeda(a.valorCompra)}</td>
+        <td class="py-2 pr-2">${fmtMoeda(custoTotalAnimal(a))}</td>
+        <td class="py-2 pr-2">${fmtMoeda(valorMercadoAnimal(a))}</td>
+        <td class="py-2 pr-2 ${valorizacaoPesoAnimal(a)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(valorizacaoPesoAnimal(a))}</td>
+        <td class="py-2 ${lucroPotencialAnimal(a)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(lucroPotencialAnimal(a))}</td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <p class="text-xs text-zinc-500 mb-2">Total de animais: <b>${state.animais.length}</b></p>
+      <div class="overflow-x-auto card p-3">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Animal</th><th class="pr-2">Compra</th><th class="pr-2">Custo total</th><th class="pr-2">Vl. mercado</th><th class="pr-2">Valoriz. peso</th><th>Lucro potencial</th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="6" class="py-4 text-center text-zinc-400">Nenhum animal cadastrado.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  else if (f.tipo === 'financeiro') {
+    const receitasP = state.receitas.filter(r => periodoMatch(r.data));
+    const despesasP = state.despesas.filter(d => periodoMatch(d.data));
+    const totR = receitasP.reduce((s,r)=>s+num(r.valor),0);
+    const totD = despesasP.reduce((s,d)=>s+num(d.valorTotal),0);
+    const porCategoria = {};
+    despesasP.forEach(d => porCategoria[d.categoria] = (porCategoria[d.categoria]||0) + num(d.valorTotal));
+    el.innerHTML = `
+      <div class="grid grid-cols-3 gap-2 mb-4">
+        <div class="stat-tile"><p class="text-[11px] text-zinc-500">Receitas</p><p class="font-bold text-green-600 text-sm">${fmtMoeda(totR)}</p></div>
+        <div class="stat-tile"><p class="text-[11px] text-zinc-500">Despesas</p><p class="font-bold text-red-600 text-sm">${fmtMoeda(totD)}</p></div>
+        <div class="stat-tile"><p class="text-[11px] text-zinc-500">Resultado</p><p class="font-bold text-sm ${(totR-totD)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(totR-totD)}</p></div>
+      </div>
+      <h3 class="font-bold text-sm text-zinc-500 mb-2">DESPESAS POR CATEGORIA</h3>
+      <div class="grid grid-cols-2 gap-2">
+        ${Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([c,v]) => `<div class="stat-tile"><p class="text-[11px] text-zinc-500">${escapeHtml(c)}</p><p class="font-bold text-sm">${fmtMoeda(v)}</p></div>`).join('') || '<p class="text-zinc-400 text-sm col-span-2 text-center py-3">Sem despesas no período.</p>'}
+      </div>`;
+  }
+
+  else if (f.tipo === 'eventos') {
+    const eventosP = state.eventos.filter(e => periodoMatch(e.data));
+    const linhas = eventosP.map(ev => `
+      <tr class="border-b border-zinc-100">
+        <td class="py-2 pr-2 font-semibold">${escapeHtml(ev.nome)}</td>
+        <td class="py-2 pr-2">${fmtData(ev.data)}</td>
+        <td class="py-2 pr-2">${ev.status}</td>
+        <td class="py-2 pr-2">${fmtMoeda(receitaEvento(ev))}</td>
+        <td class="py-2 pr-2">${fmtMoeda(totalCustosEvento(ev.id))}</td>
+        <td class="py-2 ${lucroEvento(ev)>=0?'text-green-600':'text-red-600'}">${fmtMoeda(lucroEvento(ev))}</td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <div class="overflow-x-auto card p-3">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Evento</th><th class="pr-2">Data</th><th class="pr-2">Status</th><th class="pr-2">Receita</th><th class="pr-2">Custos</th><th>Lucro</th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="6" class="py-4 text-center text-zinc-400">Nenhum evento no período.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  else if (f.tipo === 'arena') {
+    const porCategoria = {};
+    state.despesas.filter(d => d.categoria === 'Arena').forEach(d => { const c = d.arenaCategoria||d.categoria; porCategoria[c] = (porCategoria[c]||0) + num(d.valorTotal); });
+    el.innerHTML = `
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Previsto</p><p class="font-bold">${fmtMoeda(totalPrevistoArena())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Investido</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Saldo</p><p class="font-bold">${fmtMoeda(Math.max(0,totalPrevistoArena()-totalInvestidoArena()))}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Conclusão</p><p class="font-bold">${percentualConclusaoArena().toFixed(1)}%</p></div>
+      </div>
+      <h3 class="font-bold text-sm text-zinc-500 mb-2">GASTOS POR CATEGORIA</h3>
+      <div class="grid grid-cols-2 gap-2">
+        ${Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([c,v]) => `<div class="stat-tile"><p class="text-[11px] text-zinc-500">${escapeHtml(c)}</p><p class="font-bold text-sm">${fmtMoeda(v)}</p></div>`).join('') || '<p class="text-zinc-400 text-sm col-span-2 text-center py-3">Sem investimentos registrados.</p>'}
+      </div>`;
+  }
+
+  else if (f.tipo === 'patrimonial') {
+    el.innerHTML = `
+      <div class="stat-tile bg-amber-700 text-white mb-4">
+        <p class="text-xs opacity-80">Patrimônio total</p>
+        <p class="text-2xl font-bold">${fmtMoeda(patrimonioTotal())}</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Animais</p><p class="font-bold">${fmtMoeda(valorTotalAnimais())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Veículos</p><p class="font-bold">${fmtMoeda(valorTotalVeiculos())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Equipamentos</p><p class="font-bold">${fmtMoeda(valorTotalEquipamentos())}</p></div>
+        <div class="stat-tile"><p class="text-xs text-zinc-500">Arena</p><p class="font-bold">${fmtMoeda(totalInvestidoArena())}</p></div>
+        <div class="stat-tile col-span-2"><p class="text-xs text-zinc-500">Outros bens</p><p class="font-bold">${fmtMoeda(valorTotalOutrosBens())}</p></div>
+      </div>`;
+  }
+}
+/* PLACEHOLDER_RELATORIOS */
+/* =========================================================================
+   CONFIGURAÇÕES
+   ========================================================================= */
+function renderConfig() {
+  document.getElementById('section-config').innerHTML = `
+    <h2 class="font-bold text-lg mb-4">⚙️ Configurações</h2>
+    <div class="card p-4 mb-4">
+      <p class="text-xs text-zinc-500 mb-2">Meu perfil</p>
+      <p class="font-bold">${escapeHtml(state.usuarioNome)}</p>
+      <p class="text-xs text-zinc-400">${escapeHtml(state.user.email)}</p>
+      <button onclick="editarMeuNome()" class="text-xs font-semibold text-amber-700 mt-2">Editar nome</button>
+    </div>
+    <div class="card p-4 mb-4">
+      <p class="text-xs text-zinc-500 mb-2">Sócios com acesso</p>
+      ${state.usuarios.length ? state.usuarios.map(u => `
+        <div class="flex justify-between items-center py-1.5 border-b border-zinc-50 last:border-0">
+          <p class="text-sm font-semibold">${escapeHtml(u.nome)}</p>
+          <p class="text-xs text-zinc-400">${escapeHtml(u.email)}</p>
+        </div>
+      `).join('') : '<p class="text-xs text-zinc-400">Nenhum sócio identificado ainda.</p>'}
+      <p class="text-[11px] text-zinc-400 mt-3">Para dar acesso a um novo sócio, crie o usuário em Firebase Authentication (e-mail/senha) — ele aparecerá aqui após o primeiro login.</p>
+    </div>
+    <button onclick="logout()" class="btn-danger w-full">Sair da conta</button>
+    <p class="text-center text-[11px] text-zinc-400 mt-6">Gestão da Companhia de Rodeio · v1.0</p>
+  `;
+}
+function editarMeuNome() {
+  const novoNome = prompt('Seu nome:', state.usuarioNome);
+  if (!novoNome) return;
+  db.collection('usuarios').doc(state.user.uid).set({ nome: novoNome, email: state.user.email }, { merge: true })
+    .then(() => { state.usuarioNome = novoNome; document.getElementById('headerUser').textContent = novoNome + ' · ' + state.user.email; toast('Nome atualizado.'); renderConfig(); });
+}
+/* PLACEHOLDER_CONFIG */
+
+</script>
+</body>
+</html>
