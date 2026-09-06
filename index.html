@@ -168,6 +168,7 @@ const state = {
   outrosBens: [],
   saude: [],
   fundoReserva: [],
+  prejuizos: [],
   arenaConfig: { valorEstimadoTotal: 0, dataInicio: '', previsaoConclusao: '', status: 'Planejado' },
   cotacaoMercado: { valor: 0, atualizadoEm: null, municipio: '', fonte: '' },
   unsubscribers: []
@@ -180,6 +181,8 @@ const CATEGORIAS_ARENA = ['Terreno','Estrutura','Arquibancada','Bretes','Curral'
 const PRODUTOS_ALIMENTACAO = ['Ração','Sal mineral','Feno','Silagem','Suplementação','Outros'];
 const UNIDADES_MEDIDA = ['UN','KG','L','MT','CM','ML','CX'];
 const STATUS_ANIMAL = ['Ativo','Vendido','Aposentado','Falecido','Outro'];
+const CATEGORIAS_PREJUIZO = ['Morte de animal','Equipamento quebrado','Veículo/Estrutura','Perda de produção','Outros'];
+const DATA_FUNDACAO_CIA = '2024-07-07';
 const STATUS_EVENTO = ['Planejado','Confirmado','Realizado','Cancelado'];
 
 /* =========================================================================
@@ -351,6 +354,7 @@ function iniciarListeners() {
     db.collection('outrosBens').onSnapshot(snap => { state.outrosBens = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('saude').onSnapshot(snap => { state.saude = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('fundoReserva').onSnapshot(snap => { state.fundoReserva = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
+    db.collection('prejuizos').onSnapshot(snap => { state.prejuizos = snap.docs.map(d => ({ id: d.id, ...d.data() })); refreshAll(); }, erroListener),
     db.collection('config').doc('arena').onSnapshot(snap => { if (snap.exists) state.arenaConfig = snap.data(); refreshAll(); }, erroListener),
     db.collection('config').doc('cotacaoMercado').onSnapshot(snap => {
       if (snap.exists) state.cotacaoMercado = snap.data();
@@ -523,6 +527,46 @@ function valorTotalAnimaisMercado() {
 }
 function patrimonioTotalMercado() {
   return valorTotalAnimaisMercado() + valorTotalVeiculos() + valorTotalEquipamentos() + totalInvestidoArena() + valorTotalOutrosBens();
+}
+
+/* ---- Crescimento da empresa desde a fundação (07/07/2024) ----
+   Compara o patrimônio de hoje com o total que já foi investido/colocado
+   na cia (compra de animais, veículos, equipamentos, outros bens e arena)
+   desde o início, pra mostrar o quanto ela valorizou ao longo do tempo. */
+function custoTotalInvestidoEmpresa() {
+  const custoAnimais = state.animais.reduce((s, a) => s + num(a.valorCompra), 0);
+  const custoVeiculos = state.veiculos.reduce((s, v) => s + num(v.valorPago), 0);
+  const custoEquipamentos = state.equipamentos.reduce((s, e) => s + num(e.valorPago), 0);
+  const custoOutros = state.outrosBens.reduce((s, o) => s + num(o.valor), 0);
+  return custoAnimais + custoVeiculos + custoEquipamentos + custoOutros + totalInvestidoArena();
+}
+function percentualValorizacaoEmpresa() {
+  const investido = custoTotalInvestidoEmpresa();
+  if (investido <= 0) return 0;
+  return ((patrimonioTotal() - investido) / investido) * 100;
+}
+function mesesDesdeFundacao() {
+  const inicio = new Date(DATA_FUNDACAO_CIA + 'T00:00:00');
+  const agora = new Date();
+  let meses = (agora.getFullYear() - inicio.getFullYear()) * 12 + (agora.getMonth() - inicio.getMonth());
+  if (agora.getDate() < inicio.getDate()) meses--;
+  return Math.max(0, meses);
+}
+function tempoDesdeFundacaoTexto() {
+  const meses = mesesDesdeFundacao();
+  const anos = Math.floor(meses / 12);
+  const restoMeses = meses % 12;
+  if (anos <= 0) return meses + (meses === 1 ? ' mês' : ' meses');
+  let texto = anos + (anos === 1 ? ' ano' : ' anos');
+  if (restoMeses > 0) texto += ' e ' + restoMeses + (restoMeses === 1 ? ' mês' : ' meses');
+  return texto;
+}
+
+/* ---- Prejuízos (perdas irreversíveis: morte de animal, quebra de
+   equipamento/estrutura, etc.) — mostrado lado a lado com a lucratividade
+   pra comparar. */
+function totalPrejuizos(filterFn) {
+  return state.prejuizos.filter(filterFn || (() => true)).reduce((s, p) => s + num(p.valor), 0);
 }
 
 function custosDoEvento(eventoId) {
@@ -738,6 +782,11 @@ function renderDashboard() {
             <p class="text-xl font-bold">${fmtMoeda(patrimonioTotalMercado())}</p>
           </div>
         </div>
+        <div class="stat-tile mb-3">
+          <p class="text-xs text-zinc-500">📈 Crescimento da empresa desde a fundação (07/07/2024, há ${tempoDesdeFundacaoTexto()})</p>
+          <p class="font-bold text-lg ${percentualValorizacaoEmpresa()>=0?'text-green-600':'text-red-600'}">${percentualValorizacaoEmpresa()>=0?'+':''}${percentualValorizacaoEmpresa().toFixed(1)}%</p>
+          <p class="text-[11px] text-zinc-400 mt-1">Patrimônio estimado de hoje vs. total investido (compras de animais, veículos, equipamentos, outros bens e arena) desde o início.</p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="stat-tile"><p class="text-xs text-zinc-500">Animais</p><p class="font-bold">${fmtMoeda(valorTotalAnimais())}</p></div>
           <div class="stat-tile"><p class="text-xs text-zinc-500">Veículos</p><p class="font-bold">${fmtMoeda(valorTotalVeiculos())}</p></div>
@@ -903,9 +952,10 @@ function renderAnimalFicha(id) {
               <h2 class="font-bold text-lg">${escapeHtml(a.nome||'Sem nome')}</h2>
               <p class="text-xs text-zinc-400">Brinco ${escapeHtml(a.numeroBrinco||'—')} · ${escapeHtml(a.raca||'—')} · ${escapeHtml(a.sexo||'—')}</p>
             </div>
-            <div class="flex gap-2 shrink-0">
+            <div class="flex gap-2 shrink-0 flex-wrap justify-end">
               <button onclick="abrirFormAnimal(${JSON.stringify(a).replace(/"/g,'&quot;')})" class="text-xs font-semibold text-amber-700">Editar</button>
-              ${a.status !== 'Vendido' ? `<button onclick="abrirFormVenda('${a.id}')" class="text-xs font-semibold text-green-700">💰 Vender</button>` : ''}
+              ${a.status !== 'Vendido' && a.status !== 'Falecido' ? `<button onclick="abrirFormVenda('${a.id}')" class="text-xs font-semibold text-green-700">💰 Vender</button>` : ''}
+              ${a.status !== 'Vendido' && a.status !== 'Falecido' ? `<button onclick="abrirFormPrejuizo('${a.id}')" class="text-xs font-semibold text-red-700">☠️ Perda</button>` : ''}
             </div>
           </div>
           <p class="text-xs text-zinc-400 mt-1">Peso atual: ${a.pesoAtual||'—'} kg (${fmtData(a.dataUltimaPesagem)}) · Compra: ${fmtData(a.dataCompra)}</p>
@@ -924,6 +974,19 @@ function renderAnimalFicha(id) {
       <p class="font-bold text-lg text-green-700">${fmtMoeda(a.valorVenda)}</p>
       ${a.observacaoVenda ? `<p class="text-xs text-zinc-500 mt-1">${escapeHtml(a.observacaoVenda)}</p>` : ''}
     </div>` : ''}
+
+    ${a.status === 'Falecido' ? (() => { const prej = state.prejuizos.find(p => p.animalId === a.id); return `
+    <div class="card p-4 mb-4 border-2 border-red-200 bg-red-50">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold text-sm text-red-700">☠️ PERDA REGISTRADA</h3>
+        ${prej ? `<button onclick='abrirFormPrejuizo(null,${JSON.stringify(prej).replace(/'/g,"&#39;")})' class="text-xs font-semibold text-red-700">Editar</button>` : ''}
+      </div>
+      ${prej ? `
+      <p class="text-xs text-zinc-500">Data: ${fmtData(prej.data)}</p>
+      <p class="font-bold text-lg text-red-700">${fmtMoeda(prej.valor)}</p>
+      ${prej.descricao ? `<p class="text-xs text-zinc-500 mt-1">${escapeHtml(prej.descricao)}</p>` : ''}
+      ` : '<p class="text-xs text-zinc-500">Nenhum valor de prejuízo detalhado.</p>'}
+    </div>`; })() : ''}
 
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div class="stat-tile"><p class="text-xs text-zinc-500">Valor de compra</p><p class="font-bold">${fmtMoeda(a.valorCompra)}</p></div>
@@ -1132,6 +1195,73 @@ async function desfazerVenda(animalId) {
   state.receitas.filter(r => r.animalId === animalId && r.autoGerada && r.categoria === 'Venda de animal').forEach(r => batch.delete(db.collection('receitas').doc(r.id)));
   await batch.commit();
   toast('Venda desfeita.'); closeModal();
+}
+
+/* ---- Prejuízos: perda de animal (morte) ou qualquer outra perda
+   irreversível (equipamento quebrado, estrutura, etc.) ---- */
+function abrirFormPrejuizo(animalId, prejuizoExistente) {
+  const isEdit = !!prejuizoExistente;
+  const p = prejuizoExistente || {};
+  const ehMorteAnimal = !!animalId;
+  const a = animalId ? state.animais.find(x => x.id === animalId) : null;
+  const animalOptionsPrejuizo = state.animais.filter(x => x.status !== 'Falecido').slice().sort((x,y)=>(x.nome||'').localeCompare(y.nome||''))
+    .map(x => `<option value="${x.id}" ${p.animalId===x.id?'selected':''}>${escapeHtml(x.nome)}</option>`).join('');
+  openModal(isEdit ? 'Editar prejuízo' : (ehMorteAnimal ? '☠️ Registrar perda do animal' : '📉 Registrar prejuízo'), `
+    <form id="formPrejuizo" class="space-y-3">
+      ${ehMorteAnimal ? `
+        <p class="text-sm text-zinc-500">Registrando a perda de <b>${escapeHtml(a.nome||'')}</b>. Isso marca o animal como Falecido.</p>
+        <input type="hidden" name="categoria" value="Morte de animal" />
+      ` : !isEdit ? `
+        <div>
+          <label class="label-field">Categoria</label>
+          <select name="categoria" class="input-field">
+            ${CATEGORIAS_PREJUIZO.filter(c => c !== 'Morte de animal').map(c => `<option ${p.categoria===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="label-field">Animal relacionado (opcional)</label>
+          <select name="animalId" class="input-field"><option value="">Nenhum</option>${animalOptionsPrejuizo}</select>
+        </div>
+      ` : `
+        ${p.animalId ? `<p class="text-xs text-zinc-500">Vinculado ao animal: <b>${escapeHtml((state.animais.find(x=>x.id===p.animalId)||{}).nome || '—')}</b></p>` : ''}
+        <div><label class="label-field">Categoria</label><select name="categoria" class="input-field">${CATEGORIAS_PREJUIZO.map(c => `<option ${p.categoria===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      `}
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label-field">Data</label><input type="date" name="data" class="input-field" value="${p.data||hoje()}" required /></div>
+        <div><label class="label-field">Valor do prejuízo (R$)</label><input type="number" step="0.01" name="valor" class="input-field" value="${p.valor || (ehMorteAnimal && a ? custoTotalAnimal(a).toFixed(2) : '')}" required /></div>
+      </div>
+      <div><label class="label-field">Descrição</label><textarea name="descricao" class="input-field" rows="2">${escapeHtml(p.descricao||'')}</textarea></div>
+      <div class="flex gap-2 pt-2">
+        ${isEdit ? `<button type="button" class="btn-danger" onclick="excluirPrejuizo('${p.id}')">Excluir</button>` : ''}
+        <button type="submit" class="btn-primary flex-1">${isEdit ? 'Salvar alterações' : 'Registrar'}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('formPrejuizo').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    fd.valor = num(fd.valor);
+    if (ehMorteAnimal) fd.animalId = animalId;
+    else if (isEdit) fd.animalId = p.animalId || null;
+    else fd.animalId = fd.animalId || null;
+    fd.usuarioId = state.user.uid; fd.usuarioNome = state.usuarioNome;
+    try {
+      if (isEdit) {
+        fd.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('prejuizos').doc(p.id).update(fd);
+      } else {
+        fd.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('prejuizos').add(fd);
+      }
+      if (ehMorteAnimal) await db.collection('animais').doc(animalId).update({ status: 'Falecido' });
+      toast('Prejuízo registrado.'); closeModal();
+    } catch (err) { console.error(err); toast('Erro ao salvar: ' + err.message, true); }
+  });
+}
+async function excluirPrejuizo(id) {
+  if (!confirm('Excluir este registro de prejuízo?')) return;
+  await db.collection('prejuizos').doc(id).delete();
+  toast('Prejuízo excluído.'); closeModal();
 }
 
 function abrirFormAnimal(animal) {
@@ -1886,7 +2016,7 @@ function renderRelatorios() {
 
   const tipos = [
     { id: 'animais', label: 'Animais' }, { id: 'saude', label: '🏥 Saúde' }, { id: 'financeiro', label: 'Financeiro' },
-    { id: 'futuros', label: '📅 Futuros' }, { id: 'eventos', label: 'Eventos' }, { id: 'arena', label: 'Arena' }, { id: 'patrimonial', label: 'Patrimonial' }
+    { id: 'futuros', label: '📅 Futuros' }, { id: 'prejuizos', label: '📉 Prejuízos' }, { id: 'eventos', label: 'Eventos' }, { id: 'arena', label: 'Arena' }, { id: 'patrimonial', label: 'Patrimonial' }
   ];
 
   document.getElementById('section-relatorios').innerHTML = `
@@ -2001,6 +2131,43 @@ function renderConteudoRelatorio() {
         <table class="w-full text-xs whitespace-nowrap">
           <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Evento</th><th class="pr-2">Data</th><th class="pr-2">Status</th><th class="pr-2">Receita</th><th class="pr-2">Custos</th><th>Lucro</th></tr></thead>
           <tbody>${linhas || '<tr><td colspan="6" class="py-4 text-center text-zinc-400">Nenhum evento no período.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  else if (f.tipo === 'prejuizos') {
+    const registros = state.prejuizos.slice().sort((a,b) => (b.data||'').localeCompare(a.data||''));
+    const linhas = registros.map(p => {
+      const animal = p.animalId ? state.animais.find(a => a.id === p.animalId) : null;
+      return `
+      <tr class="border-b border-zinc-100 cursor-pointer" onclick='abrirFormPrejuizo(null,${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+        <td class="py-2 pr-2">${fmtData(p.data)}</td>
+        <td class="py-2 pr-2">${escapeHtml(p.categoria||'—')}</td>
+        <td class="py-2 pr-2">${animal ? '🐂 '+escapeHtml(animal.nome) : '—'}</td>
+        <td class="py-2 pr-2">${escapeHtml(p.descricao||'')}</td>
+        <td class="py-2 text-red-600 font-semibold">${fmtMoeda(p.valor)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="stat-tile bg-red-700 text-white">
+          <p class="text-xs opacity-80">Prejuízo total</p>
+          <p class="text-2xl font-bold">${fmtMoeda(totalPrejuizos())}</p>
+        </div>
+        <div class="stat-tile ${saldoAtual()>=0?'bg-green-700':'bg-red-700'} text-white">
+          <p class="text-xs opacity-80">Lucratividade (saldo)</p>
+          <p class="text-2xl font-bold">${fmtMoeda(saldoAtual())}</p>
+        </div>
+      </div>
+      <p class="text-[11px] text-zinc-400 -mt-3 mb-4">Comparando lado a lado pra ter a visão completa: o que já se perdeu de forma irreversível x o quanto a cia está lucrando no financeiro geral.</p>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-bold text-sm text-zinc-500">REGISTROS DE PREJUÍZO</h3>
+        <button onclick="abrirFormPrejuizo()" class="btn-primary text-xs">+ Prejuízo</button>
+      </div>
+      <div class="overflow-x-auto card p-3">
+        <table class="w-full text-xs whitespace-nowrap">
+          <thead><tr class="text-zinc-400 text-left border-b"><th class="py-1 pr-2">Data</th><th class="pr-2">Categoria</th><th class="pr-2">Animal</th><th class="pr-2">Descrição</th><th>Valor</th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="5" class="py-4 text-center text-zinc-400">Nenhum prejuízo registrado. 🎉</td></tr>'}</tbody>
         </table>
       </div>`;
   }
